@@ -11,6 +11,7 @@ void Require(bool value) { if (!value) std::abort(); }
 void RequireNotInitialized() {
     UserServiceLoginUserIdList list{};
     Require(sceUserServiceGetLoginUserIdList(&list) == USER_SERVICE_ERROR_NOT_INITIALIZED);
+    Require(sceUserServiceGetLoginUserIdList(nullptr) == USER_SERVICE_ERROR_NOT_INITIALIZED);
     SceUserServiceEvent event{};
     std::memset(&event, 0xAA, sizeof(event));
     Require(sceUserServiceGetEvent(&event) == USER_SERVICE_ERROR_NOT_INITIALIZED);
@@ -64,6 +65,7 @@ int main() {
     Require(sceUserServiceInitialize(nullptr) == USER_SERVICE_OK);
     Require(sceUserServiceInitialize(nullptr) == USER_SERVICE_ERROR_ALREADY_INITIALIZED);
     UserServiceLoginUserIdList list{};
+    Require(sceUserServiceGetLoginUserIdList(nullptr) == USER_SERVICE_ERROR_INVALID_ARGUMENT);
     Require(sceUserServiceGetLoginUserIdList(&list) == USER_SERVICE_OK);
     Require(list.user_id[0] == USER_SERVICE_INITIAL_USER_ID);
     RequireLoginOnce();
