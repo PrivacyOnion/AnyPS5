@@ -35,6 +35,8 @@ bool lifecycleTests() {
         && check(sceNpPartyCheckCallback() == kNotInitialized, "check callback before initialize did not fail")
         && check(sceNpPartyRegisterHandlerA(handlers, nullptr) == kNotInitialized, "register handler before initialize did not fail")
         && check(sceNpPartyRegisterHandler(handlers, nullptr) == kNotInitialized, "the plain register handler before initialize did not fail")
+        && check(sceNpPartyRegisterHandlerA(nullptr, nullptr) == kNotInitialized, "null handler before initialize did not report NOT_INITIALIZED")
+        && check(sceNpPartyRegisterHandler(nullptr, nullptr) == kNotInitialized, "null plain handler before initialize did not report NOT_INITIALIZED")
         && check(sceNpPartyInitialize(nullptr) == kInvalidArgument, "a null initialize param was not refused")
         && check(sceNpPartyInitialize(param) == 0, "initialize failed")
         && check(sceNpPartyInitialize(param) == kAlreadyInitialized, "a second initialize did not fail")
