@@ -35,6 +35,13 @@ void RequireUninitialized() {
     Require(sceNetCtlApGetState(&value) == kErrNotInitialized && value == 0x5a5a);
     Require(sceNetCtlApStop() == kErrNotInitialized);
     Require(sceNetCtlApGetConnectInfo(nullptr, block) == kErrNotInitialized);
+    Require(sceNetCtlApClearEvent(0) == kErrNotInitialized);
+    Require(sceNetCtlApRegisterCallback(nullptr, nullptr, nullptr) == kErrNotInitialized);
+    Require(sceNetCtlApUnregisterCallback(-1) == kErrNotInitialized);
+    Require(sceNetCtlApGetResult(0, nullptr) == kErrNotInitialized);
+    Require(sceNetCtlApGetInfo(nullptr) == kErrNotInitialized);
+    Require(sceNetCtlApGetState(nullptr) == kErrNotInitialized);
+    Require(sceNetCtlApGetConnectInfo(nullptr, nullptr) == kErrNotInitialized);
 }
 
 }
