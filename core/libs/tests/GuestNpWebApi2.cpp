@@ -12,6 +12,8 @@
 static void Require(bool value) { if (!value) std::abort(); }
 
 int main() {
+    constexpr int invalidArgument = static_cast<int>(0x80553402);
+    constexpr int unavailable = static_cast<int>(0x80553406);
     constexpr int invalidContext = static_cast<int>(0x80553404);
     constexpr int invalidHandle = static_cast<int>(0x8055340D);
     const int context = sceNpWebApi2Initialize(1, 0x20000);
@@ -46,8 +48,19 @@ int main() {
     std::int64_t request = 0;
     Require(user > 0 && sceNpWebApi2CreateRequest(user, "sessionManager", "/v1/sessions", "GET", nullptr, &request) == 0);
     Require(sceNpWebApi2SetRequestTimeout(request, 30000000) == 0);
+    Require(sceNpWebApi2CreateRequest(user, "sessionManager", "/v1/sessions", "GET", nullptr, nullptr) == invalidArgument);
     Require(sceNpWebApi2AddWebTraceTag(request, "trace-tag-1") == 0);
-    Require(sceNpWebApi2AddWebTraceTag(request, nullptr) == static_cast<int>(0x80553402));
+    Require(sceNpWebApi2AddWebTraceTag(request, nullptr) == invalidArgument);
+    Require(sceNpWebApi2AddHttpRequestHeader(request, "Authorization", "Bearer dummy-token") == 0);
+    Require(sceNpWebApi2SendRequest(request, nullptr, 0, nullptr) == unavailable);
+    char responseBuffer[64]{};
+    Require(sceNpWebApi2ReadData(request, responseBuffer, sizeof(responseBuffer)) == unavailable);
+    char headerBuffer[64]{};
+    Require(sceNpWebApi2GetHttpResponseHeaderValue(request, "Content-Type", headerBuffer, sizeof(headerBuffer)) == unavailable);
+    size_t headerLength = 0;
+    Require(sceNpWebApi2GetHttpResponseHeaderValueLength(request, "Content-Type", &headerLength) == unavailable);
+    sceNpWebApi2CheckTimeout();
+    Require(sceNpWebApi2DeleteUserContext(user) == 0);
     Require(sceNpWebApi2DeleteRequest(request) == 0);
     Require(sceNpWebApi2Terminate(context) == 0);
     Require(sceNpWebApi2GetMemoryPoolStats(context, &stats) == invalidContext);
@@ -56,7 +69,6 @@ int main() {
     Require(sceNpWebApi2PushEventAbortHandle(other, survivingHandle) == 0);
     Require(sceNpWebApi2Terminate(other) == 0);
 
-    constexpr int invalidArgument = static_cast<int>(0x80553402);
     NpWebApi2IntInitializeArgs args{1, 0, 0x4000, "anyps5", sizeof(NpWebApi2IntInitializeArgs)};
     const int internal = sceNpWebApi2IntInitialize(&args);
     Require(internal > 0 && sceNpWebApi2GetMemoryPoolStats(internal, &stats) == 0 && stats.pool_size == 0x4000);
@@ -69,7 +81,6 @@ int main() {
     Require(sceNpWebApi2IntInitialize2(&args2) == invalidArgument && sceNpWebApi2IntInitialize2(nullptr) == invalidArgument);
     const int presence = sceNpWebApi2InitializeForPresence(1, 0x2000);
     Require(presence > 0 && sceNpWebApi2GetMemoryPoolStats(presence, &stats) == 0 && stats.pool_size == 0x2000);
-    constexpr int unavailable = static_cast<int>(0x80553406);
     const int multipartUser = sceNpWebApi2CreateUserContext(presence, 1);
     std::int64_t multipart = 0;
     Require(sceNpWebApi2CreateMultipartRequest(multipartUser, nullptr, "/v1/files", "POST", &multipart) == invalidArgument);
