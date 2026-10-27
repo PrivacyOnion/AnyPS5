@@ -27,6 +27,8 @@ int main() {
     std::uint64_t out2 = ~0ull;
     Require(sceDiscMapUnknown_ioKMruft1ek("/app0/data.bin", 0x8000, 0x10000, &flags, &out1, &out2) == noBitmapInfo, "ioKMruft1ek did not report the missing bitmap");
     Require(flags == ~0ull && out1 == ~0ull && out2 == ~0ull, "ioKMruft1ek wrote an output");
+    Require(sceDiscMapIsRequestOnHDD(nullptr, -1, 0, nullptr) == noBitmapInfo, "null path and result in sceDiscMapIsRequestOnHDD");
+    Require(sceDiscMapUnknown_ioKMruft1ek(nullptr, -1, 0, nullptr, nullptr, nullptr) == noBitmapInfo, "null arguments in ioKMruft1ek");
     std::puts("DiscMap tests passed");
     return 0;
 }
