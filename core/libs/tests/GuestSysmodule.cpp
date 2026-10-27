@@ -366,6 +366,8 @@ int main() {
     int unloadArgResult = -1;
     Require(sceSysmoduleUnloadModuleInternalWithArg(0, 0, nullptr, 0, &unloadArgResult) == kInvalidValue);
     Require(unloadArgResult == -1);
+    Require(sceSysmoduleUnloadModuleInternalWithArg(kInternalFlag, 0, nullptr, 0, &unloadArgResult) == kInvalidValue);
+    Require(unloadArgResult == -1);
     Require(sceSysmoduleUnloadModuleInternalWithArg(kAgcDriverModuleId, 0, nullptr, 0, &unloadArgResult) == kModuleUnloaded);
     Require(unloadArgResult == -1);
     int loadArgResult = -1;
