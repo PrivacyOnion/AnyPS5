@@ -54,6 +54,7 @@ void CheckBufferQueries() {
     Require(sceHmdGetDistortionWorkMemoryAlign() == 0x400, "distortion work memory alignment query");
     Require(sceHmdDistortionGetWorkMemorySize() == 0x20000, "distortion work memory size");
     Require(sceHmdGetDistortionWorkMemorySize() == 0x20000, "distortion work memory size query");
+    Require(sceHmdDistortionGetCompoundEyeCorrectionCommand() == Hmd::ParameterInvalid, "distortion compound eye correction command query");
     Require(sceHmdReprojectionQueryGarlicBuffAlign() == 0x100, "reprojection garlic buffer alignment");
     Require(sceHmdReprojectionQueryGarlicBuffSize() == 0x100000, "reprojection garlic buffer size");
     Require(sceHmdReprojectionQueryOnionBuffAlign() == 0x100, "reprojection onion buffer alignment");
@@ -73,8 +74,13 @@ void CheckHandleQueries(std::int32_t expected) {
         Require(sceHmdGetFieldOfView(handle, nullptr) == Hmd::ParameterNull, "null field of view accepted");
         Require(sceHmdGetFieldOfView(handle, reinterpret_cast<HmdFieldOfView*>(fieldOfView)) == expected, "field of view without a headset");
         Require(sceHmdGet2DEyeOffset(handle, reinterpret_cast<HmdEyeOffset*>(left), reinterpret_cast<HmdEyeOffset*>(right)) == expected, "eye offset without a headset");
+        Require(sceHmdGet2DEyeOffset(handle, reinterpret_cast<HmdEyeOffset*>(left), nullptr) == expected, "eye offset with null right");
+        Require(sceHmdGet2DEyeOffset(handle, nullptr, reinterpret_cast<HmdEyeOffset*>(right)) == expected, "eye offset with null left");
         Require(sceHmdGet2DEyeOffset(handle, nullptr, nullptr) == expected, "eye offset with null outputs");
         Require(sceHmdGetInertialSensorData(handle, reinterpret_cast<HmdInertialSensorData*>(sensor), 1) == expected, "sensor data without a headset");
+        Require(sceHmdGetInertialSensorData(handle, reinterpret_cast<HmdInertialSensorData*>(sensor), 0) == expected, "sensor data with zero count");
+        Require(sceHmdGetInertialSensorData(handle, nullptr, 0) == expected, "null sensor data with zero count");
+        Require(sceHmdGetInertialSensorData(handle, nullptr, 1) == expected, "null sensor data");
     }
     for (const auto* bytes : {left, right, fieldOfView}) {
         for (std::size_t index = 0; index < 16; ++index) Require(bytes[index] == 0x5a, "a refused query wrote its output");
@@ -173,8 +179,17 @@ int main() {
     CheckDisconnected();
     CheckBufferQueries();
     Require(sceHmdTerminate() == Hmd::NotInitialized, "terminate before initialize");
+    Require(sceHmdOpen(-1, 0, 0, nullptr) == Hmd::NotInitialized, "open invalid user before initialize");
+    Require(sceHmdOpen(0xff, 0, 0, nullptr) == Hmd::NotInitialized, "open system user before initialize");
+    Require(sceHmdOpen(1, 1, 0, nullptr) == Hmd::NotInitialized, "open invalid type before initialize");
+    Require(sceHmdOpen(1, 0, 1, nullptr) == Hmd::NotInitialized, "open invalid index before initialize");
+    Require(sceHmdOpen(1, 0, 0, reinterpret_cast<Hmd::OpenParam*>(&param)) == Hmd::NotInitialized, "open with param before initialize");
     Require(sceHmdOpen(1, 0, 0, nullptr) == Hmd::NotInitialized, "open before initialize");
-    Require(sceHmdClose(0) == Hmd::NotInitialized, "close before initialize");
+    for (const auto handle : {0, -1, 1, 0x0f000000}) {
+        Require(sceHmdClose(handle) == Hmd::NotInitialized, "close before initialize");
+        Require(sceHmdGetDeviceInformationByHandle(handle, &info) == Hmd::NotInitialized, "handle query before initialize");
+        Require(sceHmdGetDeviceInformationByHandle(handle, nullptr) == Hmd::NotInitialized, "null handle query before initialize");
+    }
     Require(sceHmdGetDeviceInformation(nullptr) == Hmd::ParameterNull, "null information");
     Require(sceHmdGetDeviceInformation(&info) == Hmd::NotInitialized, "query before initialize");
     Require(std::memcmp(&info, &untouched, sizeof(info)) == 0, "failed query modified output");
@@ -198,6 +213,11 @@ int main() {
         Require(sceHmdInitialize(&param) == Hmd::AlreadyInitialized, "duplicate initialize");
         Require(sceHmdInitialize315(&param) == Hmd::AlreadyInitialized, "shared initialization");
         Require(sceHmdInitialize(nullptr) == Hmd::AlreadyInitialized, "duplicate precedence");
+        Require(sceHmdInitialize315(nullptr) == Hmd::AlreadyInitialized, "shared duplicate precedence");
+        param.reserved0 = &param;
+        Require(sceHmdInitialize(&param) == Hmd::AlreadyInitialized, "duplicate precedence over reserved");
+        Require(sceHmdInitialize315(&param) == Hmd::AlreadyInitialized, "duplicate 315 precedence over reserved");
+        param.reserved0 = nullptr;
         CheckDisconnected();
         Require(sceHmdGetDeviceInformation(&info) == 0, "device query failed");
         Hmd::DeviceInformation expected{};
@@ -212,6 +232,7 @@ int main() {
         Require(sceHmdOpen(1, 0, 1, nullptr) == Hmd::ParameterInvalid, "invalid index");
         Require(sceHmdOpen(1, 0, 0, reinterpret_cast<Hmd::OpenParam*>(&param)) ==
                     Hmd::ParameterInvalid, "non-null reserved open parameter");
+        Require(sceHmdOpen(0, 0, 0, nullptr) == Hmd::DeviceDisconnected, "open user 0 without headset");
         Require(sceHmdOpen(1, 0, 0, nullptr) == Hmd::DeviceDisconnected, "open faked a handle");
         Require(sceHmdOpen(1, 0, 0, nullptr) == Hmd::DeviceDisconnected, "failed open created state");
         for (const auto handle : {0, -1, 1, 0x0f000000}) {
@@ -228,6 +249,12 @@ int main() {
         Require(sceHmdTerminate() == 0, "terminate failed");
         Require(sceHmdTerminate() == Hmd::NotInitialized, "duplicate terminate");
         Require(sceHmdGetDeviceInformation(&info) == Hmd::NotInitialized, "query after terminate");
+        Require(sceHmdOpen(1, 0, 0, nullptr) == Hmd::NotInitialized, "open after terminate");
+        Require(sceHmdClose(0) == Hmd::NotInitialized, "close after terminate");
+        Require(sceHmdGetDeviceInformationByHandle(0, &info) == Hmd::NotInitialized, "handle query after terminate");
+        Require(sceHmdGetDeviceInformationByHandle(0, nullptr) == Hmd::NotInitialized, "null handle query after terminate");
+        CheckHandleQueries(Hmd::NotInitialized);
+        CheckAssyError(Hmd::NotInitialized);
         CheckDisconnected();
     }
 }
