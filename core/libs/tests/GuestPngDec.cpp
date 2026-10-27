@@ -244,6 +244,8 @@ int main() {
     void* handle = nullptr;
     Require(scePngDecCreate(nullptr, unaligned, static_cast<std::uint32_t>(memorySize), &handle) == invalidAddr);
     Require(scePngDecCreate(&badSize, unaligned, static_cast<std::uint32_t>(memorySize), &handle) == invalidSize);
+    Require(scePngDecCreate(&badAttribute, unaligned, static_cast<std::uint32_t>(memorySize), &handle) == invalidParam);
+    Require(scePngDecCreate(&zeroWidth, unaligned, static_cast<std::uint32_t>(memorySize), &handle) == invalidParam);
     Require(scePngDecCreate(&overWidth, unaligned, static_cast<std::uint32_t>(memorySize), &handle) == invalidParam);
     Require(scePngDecCreate(&param, nullptr, static_cast<std::uint32_t>(memorySize), &handle) == invalidAddr);
     Require(scePngDecCreate(&param, unaligned, static_cast<std::uint32_t>(memorySize), nullptr) == invalidAddr);
@@ -277,6 +279,8 @@ int main() {
     const std::uint8_t garbage[40] = {1, 2, 3};
     const PngDecParseParam parseGarbage{garbage, sizeof(garbage), 0};
     Require(scePngDecParseHeader(&parseGarbage, &info) == invalidData);
+    const PngDecParseParam parseReserved{rgbPng.data(), static_cast<std::uint32_t>(rgbPng.size()), 1};
+    Require(scePngDecParseHeader(&parseReserved, &info) == invalidParam);
 
     std::vector<std::uint8_t> image(3 * 2 * 4);
     PngDecDecodeParam decode = DecodeParam(rgbPng, image);
