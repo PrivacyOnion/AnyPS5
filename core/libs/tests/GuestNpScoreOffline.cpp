@@ -54,6 +54,7 @@ void CheckOffline(const char* name, int status, int req) {
 
 void CheckContexts() {
     Require(sceNpScoreCreateNpTitleCtx(0xFFFFFFFFu, nullptr) == InvalidArgument, "sceNpScoreCreateNpTitleCtx", "the invalid service label was not refused before the null NpId");
+    Require(sceNpScoreCreateNpTitleCtx(0xFFFFFFFFu, selfNpId) == InvalidArgument, "sceNpScoreCreateNpTitleCtx", "the invalid service label was taken with valid np id");
     Require(sceNpScoreCreateNpTitleCtx(0, nullptr) == InsufficientArgument, "sceNpScoreCreateNpTitleCtx", "a null NpId was taken");
     context = sceNpScoreCreateNpTitleCtx(0, selfNpId);
     Require(context == 1, "sceNpScoreCreateNpTitleCtx", "the first context is not id 1");
@@ -82,6 +83,15 @@ void CheckRequests() {
     Require(sceNpScorePollAsync(req, &result) == PollRunning && result == 7, "sceNpScorePollAsync", "an unstarted request was not running");
     Require(sceNpScoreAbortRequest(req + 100) == InvalidId, "sceNpScoreAbortRequest", "an unknown request was taken");
     Require(sceNpScoreAbortRequest(req) == 0, "sceNpScoreAbortRequest", "aborting failed");
+    Require(sceNpScoreAbortRequest(req) == 0, "sceNpScoreAbortRequest", "aborting an aborted request failed");
+    Require(sceNpScoreRecordScoreAsync(req, 1, 5, nullptr, nullptr, nullptr, nullptr, nullptr) == Aborted, "sceNpScoreRecordScoreAsync", "an aborted request did not return ABORTED");
+    Require(sceNpScoreGetRankingByRange(req, 1, 1, ranks, 0x80, nullptr, 0, nullptr, 0, 1, nullptr, nullptr, nullptr) == Aborted, "sceNpScoreGetRankingByRange", "an aborted request did not return ABORTED");
+    Require(sceNpScoreGetRankingByRangeAsync(req, 1, 1, ranks, 0x80, nullptr, 0, nullptr, 0, 1, nullptr, nullptr, nullptr) == Aborted, "sceNpScoreGetRankingByRangeAsync", "an aborted request did not return ABORTED");
+    Require(sceNpScoreGetRankingByNpId(req, 1, npIds, 36, ranks, 0x88, nullptr, 0, nullptr, 0, 1, nullptr, nullptr, nullptr) == Aborted, "sceNpScoreGetRankingByNpId", "an aborted request did not return ABORTED");
+    Require(sceNpScoreGetRankingByNpIdAsync(req, 1, npIds, 36, ranks, 0x88, nullptr, 0, nullptr, 0, 1, nullptr, nullptr, nullptr) == Aborted, "sceNpScoreGetRankingByNpIdAsync", "an aborted request did not return ABORTED");
+    Require(sceNpScoreGetFriendsRanking(req, 1, 0, ranks, 0x80, nullptr, 0, nullptr, 0, 1, nullptr, nullptr, nullptr) == Aborted, "sceNpScoreGetFriendsRanking", "an aborted request did not return ABORTED");
+    Require(sceNpScoreGetFriendsRankingAsync(req, 1, 0, ranks, 0x80, nullptr, 0, nullptr, 0, 1, nullptr, nullptr, nullptr) == Aborted, "sceNpScoreGetFriendsRankingAsync", "an aborted request did not return ABORTED");
+    Require(sceNpScoreGetBoardInfo(req, 1, board, nullptr) == Aborted, "sceNpScoreGetBoardInfo", "an aborted request did not return ABORTED");
     Require(sceNpScorePollAsync(req, nullptr) == PollFinished, "sceNpScorePollAsync", "a null result was not accepted");
     Require(sceNpScorePollAsync(req, &result) == PollFinished && result == Aborted, "sceNpScoreAbortRequest", "an aborted request did not finish with ABORTED");
     Require(sceNpScoreRecordScore(req, 1, 5, nullptr, nullptr, nullptr, nullptr, nullptr) == Aborted, "sceNpScoreRecordScore", "an aborted request did not return ABORTED");
@@ -93,7 +103,6 @@ void CheckRequests() {
     Require(sceNpScorePollAsync(req, &result) == PollFinished && result == SignedOut, "sceNpScoreAbortRequest", "aborting a finished request changed its result");
     Require(sceNpScoreRecordScore(req, 1, 5, nullptr, nullptr, nullptr, nullptr, nullptr) == SignedOut, "sceNpScoreRecordScore", "a finished request was not reused");
     sceNpScoreDeleteRequest(req);
-
 }
 
 void CheckRecord() {
@@ -104,13 +113,18 @@ void CheckRecord() {
     Require(sceNpScoreRecordScore(req, 1, 5, nullptr, &info, &tmpRank, nullptr, &info) == InvalidArgument, "sceNpScoreRecordScore", "an option was taken");
     Require(sceNpScoreRecordScore(req, 1, 5, nullptr, &info, &tmpRank, nullptr, nullptr) == InvalidArgument, "sceNpScoreRecordScore", "190 bytes of game info were taken");
     Require(sceNpScoreRecordScoreAsync(req, 1, 5, nullptr, &info, &tmpRank, nullptr, nullptr) == InvalidArgument, "sceNpScoreRecordScoreAsync", "190 bytes of game info were taken");
+    Require(sceNpScoreRecordScoreAsync(req, 1, 5, nullptr, &info, &tmpRank, nullptr, &info) == InvalidArgument, "sceNpScoreRecordScoreAsync", "an option was taken");
     info.infoSize = 189;
     Require(sceNpScoreRecordScore(req + 100, 1, 5, nullptr, &info, &tmpRank, nullptr, nullptr) == InvalidId, "sceNpScoreRecordScore", "an unknown request was taken");
+    Require(sceNpScoreRecordScoreAsync(req + 100, 1, 5, nullptr, &info, &tmpRank, nullptr, nullptr) == InvalidId, "sceNpScoreRecordScoreAsync", "an unknown request was taken");
     Require(sceNpScorePollAsync(req, nullptr) == PollRunning, "sceNpScoreRecordScore", "a refused call finished the request");
     CheckOffline("sceNpScoreRecordScoreAsync", sceNpScoreRecordScoreAsync(req, 1, 5, nullptr, &info, &tmpRank, nullptr, nullptr), req);
     Require(tmpRank == 77, "sceNpScoreRecordScoreAsync", "a rank was written");
+    const int reqSync = NewRequest();
+    CheckOffline("sceNpScoreRecordScore", sceNpScoreRecordScore(reqSync, 1, 5, nullptr, &info, &tmpRank, nullptr, nullptr), reqSync);
+    Require(tmpRank == 77, "sceNpScoreRecordScore", "a rank was written");
+    sceNpScoreDeleteRequest(reqSync);
     sceNpScoreDeleteRequest(req);
-
 }
 
 void CheckRange() {
@@ -125,11 +139,19 @@ void CheckRange() {
     Require(sceNpScoreGetRankingByRange(req, 1, 1, ranks, 0x100, comments, 128, infos, 200, 2, nullptr, nullptr, nullptr) == InvalidAlignment, "sceNpScoreGetRankingByRange", "an info array size other than 200 per rank was taken");
     Require(sceNpScoreGetRankingByRange(req + 100, 1, 1, ranks, 0x100, comments, 128, infos, 400, 2, nullptr, nullptr, nullptr) == InvalidId, "sceNpScoreGetRankingByRange", "an unknown request was taken");
     CheckOffline("sceNpScoreGetRankingByRange", sceNpScoreGetRankingByRange(req, 1, 1, ranks, 0x100, comments, 128, infos, 400, 2, nullptr, nullptr, nullptr), req);
+    Require(sceNpScoreGetRankingByRange(req, 1, 1, manyRanks, 100 * 0x80, nullptr, 0, nullptr, 0, 100, nullptr, nullptr, nullptr) == SignedOut, "sceNpScoreGetRankingByRange", "100 ranks did not return SIGNED_OUT");
+    Require(sceNpScoreGetRankingByRangeAsync(req, 1, 1, ranks, 0x80, nullptr, 0, nullptr, 0, 1, nullptr, nullptr, board) == InvalidArgument, "sceNpScoreGetRankingByRangeAsync", "an option was taken");
+    Require(sceNpScoreGetRankingByRangeAsync(req, 1, 1, ranks, 101 * 0x80, nullptr, 0, nullptr, 0, 101, nullptr, nullptr, nullptr) == InvalidArgument, "sceNpScoreGetRankingByRangeAsync", "101 ranks were taken");
+    Require(sceNpScoreGetRankingByRangeAsync(req, 1, 1, nullptr, 0x80, nullptr, 0, nullptr, 0, 1, nullptr, nullptr, nullptr) == InsufficientArgument, "sceNpScoreGetRankingByRangeAsync", "a null rank array was taken");
+    Require(sceNpScoreGetRankingByRangeAsync(req, 1, 1, ranks, 0, nullptr, 0, nullptr, 0, 0, nullptr, nullptr, nullptr) == InsufficientArgument, "sceNpScoreGetRankingByRangeAsync", "zero ranks were taken");
+    Require(sceNpScoreGetRankingByRangeAsync(req, 1, 1, ranks, 0x88, nullptr, 0, nullptr, 0, 1, nullptr, nullptr, nullptr) == InvalidAlignment, "sceNpScoreGetRankingByRangeAsync", "a rank array size other than 0x80 per rank was taken");
+    Require(sceNpScoreGetRankingByRangeAsync(req, 1, 1, ranks, 0x100, comments, 64, nullptr, 0, 2, nullptr, nullptr, nullptr) == InvalidAlignment, "sceNpScoreGetRankingByRangeAsync", "a comment array size other than 64 per rank was taken");
+    Require(sceNpScoreGetRankingByRangeAsync(req, 1, 1, ranks, 0x100, comments, 128, infos, 200, 2, nullptr, nullptr, nullptr) == InvalidAlignment, "sceNpScoreGetRankingByRangeAsync", "an info array size other than 200 per rank was taken");
+    Require(sceNpScoreGetRankingByRangeAsync(req + 100, 1, 1, ranks, 0x100, comments, 128, infos, 400, 2, nullptr, nullptr, nullptr) == InvalidId, "sceNpScoreGetRankingByRangeAsync", "an unknown request was taken");
     Require(sceNpScoreGetRankingByRangeAsync(req, 1, 1, ranks, 0x100, nullptr, 0, nullptr, 0, 2, nullptr, nullptr, nullptr) == SignedOut, "sceNpScoreGetRankingByRangeAsync", "valid arguments did not return SIGNED_OUT");
     Require(sceNpScoreGetRankingByRangeAsync(req, 1, 0, ranks, 0x100, nullptr, 0, nullptr, 0, 2, nullptr, nullptr, nullptr) == InvalidArgument, "sceNpScoreGetRankingByRangeAsync", "rank 0 was taken");
     Require(sceNpScoreGetRankingByRangeAsync(req, 1, 1, manyRanks, 100 * 0x80, nullptr, 0, nullptr, 0, 100, nullptr, nullptr, nullptr) == SignedOut, "sceNpScoreGetRankingByRangeAsync", "100 ranks did not return SIGNED_OUT");
     sceNpScoreDeleteRequest(req);
-
 }
 
 void CheckNpId() {
@@ -141,11 +163,23 @@ void CheckNpId() {
     Require(sceNpScoreGetRankingByNpId(req, 1, npIds, 24, ranks, 0x88, nullptr, 0, nullptr, 0, 1, nullptr, nullptr, nullptr) == InvalidAlignment, "sceNpScoreGetRankingByNpId", "an NpId array size other than 36 per NpId was taken");
     Require(sceNpScoreGetRankingByNpId(req, 1, npIds, 36, ranks, 0x80, nullptr, 0, nullptr, 0, 1, nullptr, nullptr, nullptr) == InvalidAlignment, "sceNpScoreGetRankingByNpId", "a rank array size other than 0x88 per NpId was taken");
     Require(sceNpScoreGetRankingByNpId(req, 1, npIds, 36, ranks, 0x88, comments, 128, nullptr, 0, 1, nullptr, nullptr, nullptr) == InvalidAlignment, "sceNpScoreGetRankingByNpId", "a comment array size other than 64 per NpId was taken");
+    Require(sceNpScoreGetRankingByNpId(req, 1, npIds, 72, ranks, 0x110, comments, 128, infos, 200, 2, nullptr, nullptr, nullptr) == InvalidAlignment, "sceNpScoreGetRankingByNpId", "an info array size other than 200 per NpId was taken");
+    Require(sceNpScoreGetRankingByNpId(req + 100, 1, npIds, 72, ranks, 0x110, comments, 128, infos, 400, 2, nullptr, nullptr, nullptr) == InvalidId, "sceNpScoreGetRankingByNpId", "an unknown request was taken");
+    Require(sceNpScoreGetRankingByNpId(req, 1, npIds, 0, ranks, 0, nullptr, 0, nullptr, 0, 0, nullptr, nullptr, nullptr) == SignedOut, "sceNpScoreGetRankingByNpId", "zero NpIds did not return SIGNED_OUT");
+    Require(sceNpScoreGetRankingByNpId(req, 1, manyNpIds, sizeof(manyNpIds), manyRanks, sizeof(manyRanks), nullptr, 0, nullptr, 0, 101, nullptr, nullptr, nullptr) == SignedOut, "sceNpScoreGetRankingByNpId", "101 NpIds did not return SIGNED_OUT");
     CheckOffline("sceNpScoreGetRankingByNpId", sceNpScoreGetRankingByNpId(req, 1, npIds, 72, ranks, 0x110, comments, 128, infos, 400, 2, nullptr, nullptr, nullptr), req);
+    Require(sceNpScoreGetRankingByNpIdAsync(req, 1, npIds, 36, ranks, 0x88, nullptr, 0, nullptr, 0, 1, nullptr, nullptr, board) == InvalidArgument, "sceNpScoreGetRankingByNpIdAsync", "an option was taken");
+    Require(sceNpScoreGetRankingByNpIdAsync(req, 1, nullptr, 0, nullptr, 0, nullptr, 0, nullptr, 0, 102, nullptr, nullptr, nullptr) == TooManyNpId, "sceNpScoreGetRankingByNpIdAsync", "102 NpIds were taken");
+    Require(sceNpScoreGetRankingByNpIdAsync(req, 1, nullptr, 36, ranks, 0x88, nullptr, 0, nullptr, 0, 1, nullptr, nullptr, nullptr) == InsufficientArgument, "sceNpScoreGetRankingByNpIdAsync", "a null NpId array was taken");
+    Require(sceNpScoreGetRankingByNpIdAsync(req, 1, npIds, 36, nullptr, 0x88, nullptr, 0, nullptr, 0, 1, nullptr, nullptr, nullptr) == InsufficientArgument, "sceNpScoreGetRankingByNpIdAsync", "a null rank array was taken");
+    Require(sceNpScoreGetRankingByNpIdAsync(req, 1, npIds, 24, ranks, 0x88, nullptr, 0, nullptr, 0, 1, nullptr, nullptr, nullptr) == InvalidAlignment, "sceNpScoreGetRankingByNpIdAsync", "an NpId array size other than 36 per NpId was taken");
+    Require(sceNpScoreGetRankingByNpIdAsync(req, 1, npIds, 36, ranks, 0x80, nullptr, 0, nullptr, 0, 1, nullptr, nullptr, nullptr) == InvalidAlignment, "sceNpScoreGetRankingByNpIdAsync", "a rank array size other than 0x88 per NpId was taken");
+    Require(sceNpScoreGetRankingByNpIdAsync(req, 1, npIds, 36, ranks, 0x88, comments, 128, nullptr, 0, 1, nullptr, nullptr, nullptr) == InvalidAlignment, "sceNpScoreGetRankingByNpIdAsync", "a comment array size other than 64 per NpId was taken");
+    Require(sceNpScoreGetRankingByNpIdAsync(req, 1, npIds, 72, ranks, 0x110, comments, 128, infos, 200, 2, nullptr, nullptr, nullptr) == InvalidAlignment, "sceNpScoreGetRankingByNpIdAsync", "an info array size other than 200 per NpId was taken");
+    Require(sceNpScoreGetRankingByNpIdAsync(req + 100, 1, npIds, 72, ranks, 0x110, comments, 128, infos, 400, 2, nullptr, nullptr, nullptr) == InvalidId, "sceNpScoreGetRankingByNpIdAsync", "an unknown request was taken");
     Require(sceNpScoreGetRankingByNpIdAsync(req, 1, npIds, 0, ranks, 0, nullptr, 0, nullptr, 0, 0, nullptr, nullptr, nullptr) == SignedOut, "sceNpScoreGetRankingByNpIdAsync", "zero NpIds did not return SIGNED_OUT");
     Require(sceNpScoreGetRankingByNpIdAsync(req, 1, manyNpIds, sizeof(manyNpIds), manyRanks, sizeof(manyRanks), nullptr, 0, nullptr, 0, 101, nullptr, nullptr, nullptr) == SignedOut, "sceNpScoreGetRankingByNpIdAsync", "101 NpIds did not return SIGNED_OUT");
     sceNpScoreDeleteRequest(req);
-
 }
 
 void CheckFriends() {
@@ -155,6 +189,7 @@ void CheckFriends() {
     const NpScoreFriendRankingOption shortOption{16, nullptr, nullptr};
     const NpScoreFriendRankingOption rankZero{24, &zero, nullptr};
     const NpScoreFriendRankingOption rankFive{24, &five, nullptr};
+    const NpScoreFriendRankingOption nullStartRank{24, nullptr, nullptr};
     Require(sceNpScoreGetFriendsRanking(req, 1, 0, nullptr, 0x80, nullptr, 0, nullptr, 0, 0, nullptr, nullptr, &shortOption) == InvalidArgument, "sceNpScoreGetFriendsRanking", "a null rank array was taken");
     Require(sceNpScoreGetFriendsRanking(req, 1, 0, ranks, 0x88, nullptr, 0, nullptr, 0, 1, nullptr, nullptr, &shortOption) == InvalidAlignment, "sceNpScoreGetFriendsRanking", "the rank array size was not checked before the option");
     Require(sceNpScoreGetFriendsRanking(req, 1, 0, ranks, 0x80, nullptr, 0, nullptr, 0, 1, nullptr, nullptr, &rankFive) == InvalidArgument, "sceNpScoreGetFriendsRanking", "an option without includeSelf was taken");
@@ -162,21 +197,36 @@ void CheckFriends() {
     Require(sceNpScoreGetFriendsRanking(req, 1, 1, ranks, 0x80, nullptr, 0, nullptr, 0, 1, nullptr, nullptr, &rankZero) == InvalidArgument, "sceNpScoreGetFriendsRanking", "start rank 0 was taken");
     Require(sceNpScoreGetFriendsRanking(req, 1, 1, ranks, 101 * 0x80, nullptr, 0, nullptr, 0, 101, nullptr, nullptr, nullptr) == InvalidArgument, "sceNpScoreGetFriendsRanking", "101 friends were taken");
     Require(sceNpScoreGetFriendsRanking(req, 1, 1, ranks, 0, nullptr, 0, nullptr, 0, 0, nullptr, nullptr, nullptr) == InsufficientArgument, "sceNpScoreGetFriendsRanking", "zero friends were taken");
+    Require(sceNpScoreGetFriendsRanking(req, 1, 1, ranks, 0x80, comments, 128, nullptr, 0, 1, nullptr, nullptr, nullptr) == InvalidAlignment, "sceNpScoreGetFriendsRanking", "a comment array size other than 64 per friend was taken");
     Require(sceNpScoreGetFriendsRanking(req, 1, 1, ranks, 0x80, nullptr, 0, infos, 400, 1, nullptr, nullptr, nullptr) == InvalidAlignment, "sceNpScoreGetFriendsRanking", "an info array size other than 200 per friend was taken");
+    Require(sceNpScoreGetFriendsRanking(req + 100, 1, 1, ranks, 0x80, nullptr, 0, nullptr, 0, 1, nullptr, nullptr, nullptr) == InvalidId, "sceNpScoreGetFriendsRanking", "an unknown request was taken");
+    Require(sceNpScoreGetFriendsRanking(req, 1, 1, ranks, 0x80, nullptr, 0, nullptr, 0, 1, nullptr, nullptr, nullptr) == SignedOut, "sceNpScoreGetFriendsRanking", "includeSelf with null option did not return SIGNED_OUT");
+    Require(sceNpScoreGetFriendsRanking(req, 1, 1, ranks, 0x80, nullptr, 0, nullptr, 0, 1, nullptr, nullptr, &nullStartRank) == SignedOut, "sceNpScoreGetFriendsRanking", "null startSerialRank in option did not return SIGNED_OUT");
+    Require(sceNpScoreGetFriendsRanking(req, 1, 0, ranks, 0x100, nullptr, 0, nullptr, 0, 2, nullptr, nullptr, nullptr) == SignedOut, "sceNpScoreGetFriendsRanking", "includeSelf 0 did not return SIGNED_OUT");
+    Require(sceNpScoreGetFriendsRanking(req, 1, 0, manyRanks, 100 * 0x80, nullptr, 0, nullptr, 0, 100, nullptr, nullptr, nullptr) == SignedOut, "sceNpScoreGetFriendsRanking", "100 friends did not return SIGNED_OUT");
     CheckOffline("sceNpScoreGetFriendsRanking", sceNpScoreGetFriendsRanking(req, 1, 1, ranks, 0x80, comments, 64, infos, 200, 1, nullptr, nullptr, &rankFive), req);
+    Require(sceNpScoreGetFriendsRankingAsync(req, 1, 0, nullptr, 0x80, nullptr, 0, nullptr, 0, 0, nullptr, nullptr, &shortOption) == InvalidArgument, "sceNpScoreGetFriendsRankingAsync", "a null rank array was taken");
+    Require(sceNpScoreGetFriendsRankingAsync(req, 1, 0, ranks, 0x88, nullptr, 0, nullptr, 0, 1, nullptr, nullptr, &shortOption) == InvalidAlignment, "sceNpScoreGetFriendsRankingAsync", "the rank array size was not checked before the option");
+    Require(sceNpScoreGetFriendsRankingAsync(req, 1, 0, ranks, 0x80, nullptr, 0, nullptr, 0, 1, nullptr, nullptr, &rankFive) == InvalidArgument, "sceNpScoreGetFriendsRankingAsync", "an option without includeSelf was taken");
+    Require(sceNpScoreGetFriendsRankingAsync(req, 1, 1, ranks, 0x80, nullptr, 0, nullptr, 0, 1, nullptr, nullptr, &shortOption) == InvalidArgument, "sceNpScoreGetFriendsRankingAsync", "an option size other than 24 was taken");
+    Require(sceNpScoreGetFriendsRankingAsync(req, 1, 1, ranks, 0x80, nullptr, 0, nullptr, 0, 1, nullptr, nullptr, &rankZero) == InvalidArgument, "sceNpScoreGetFriendsRankingAsync", "start rank 0 was taken");
+    Require(sceNpScoreGetFriendsRankingAsync(req, 1, 1, ranks, 101 * 0x80, nullptr, 0, nullptr, 0, 101, nullptr, nullptr, nullptr) == InvalidArgument, "sceNpScoreGetFriendsRankingAsync", "101 friends were taken");
+    Require(sceNpScoreGetFriendsRankingAsync(req, 1, 1, ranks, 0, nullptr, 0, nullptr, 0, 0, nullptr, nullptr, nullptr) == InsufficientArgument, "sceNpScoreGetFriendsRankingAsync", "zero friends were taken");
+    Require(sceNpScoreGetFriendsRankingAsync(req, 1, 1, ranks, 0x80, comments, 128, nullptr, 0, 1, nullptr, nullptr, nullptr) == InvalidAlignment, "sceNpScoreGetFriendsRankingAsync", "a comment array size other than 64 per friend was taken");
+    Require(sceNpScoreGetFriendsRankingAsync(req, 1, 1, ranks, 0x80, nullptr, 0, infos, 400, 1, nullptr, nullptr, nullptr) == InvalidAlignment, "sceNpScoreGetFriendsRankingAsync", "an info array size other than 200 per friend was taken");
+    Require(sceNpScoreGetFriendsRankingAsync(req + 100, 1, 1, ranks, 0x80, nullptr, 0, nullptr, 0, 1, nullptr, nullptr, nullptr) == InvalidId, "sceNpScoreGetFriendsRankingAsync", "an unknown request was taken");
     Require(sceNpScoreGetFriendsRankingAsync(req, 1, 0, ranks, 0x100, nullptr, 0, nullptr, 0, 2, nullptr, nullptr, nullptr) == SignedOut, "sceNpScoreGetFriendsRankingAsync", "valid arguments did not return SIGNED_OUT");
     Require(sceNpScoreGetFriendsRankingAsync(req, 1, 0, manyRanks, 100 * 0x80, nullptr, 0, nullptr, 0, 100, nullptr, nullptr, nullptr) == SignedOut, "sceNpScoreGetFriendsRankingAsync", "100 friends did not return SIGNED_OUT");
     sceNpScoreDeleteRequest(req);
-
 }
 
 void CheckBoard() {
     const int req = NewRequest();
     Require(sceNpScoreGetBoardInfo(req, 1, board, board) == InvalidArgument, "sceNpScoreGetBoardInfo", "an option was taken");
     Require(sceNpScoreGetBoardInfo(req + 100, 1, board, nullptr) == InvalidId, "sceNpScoreGetBoardInfo", "an unknown request was taken");
+    Require(sceNpScoreGetBoardInfo(req, 1, nullptr, board) == InvalidArgument, "sceNpScoreGetBoardInfo", "an option was not checked before null board info");
     CheckOffline("sceNpScoreGetBoardInfo", sceNpScoreGetBoardInfo(req, 1, board, nullptr), req);
     sceNpScoreDeleteRequest(req);
-
 }
 
 }
