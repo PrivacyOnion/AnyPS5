@@ -78,6 +78,13 @@ void RequireNotInit(std::int32_t handle) {
     Require(sceMoveSetVibration(handle, 0xFF) == kNotInit);
     Require(sceMoveSetLightSphere(handle, 0xFF, 0, 0) == kNotInit);
     Require(sceMoveResetLightSphere(handle) == kNotInit);
+    Require(sceMoveGetDeviceInfo(handle, nullptr) == kNotInit);
+    Require(sceMoveGetExtensionPortInfo(handle, nullptr) == kNotInit);
+    Require(sceMoveReadStateLatest(handle, nullptr) == kNotInit);
+    Require(sceMoveReadStateRecent(handle, -1, nullptr, nullptr) == kNotInit);
+    Require(sceMoveReadStateRecent(handle, 1, buffer.bytes, &count) == kNotInit);
+    Require(sceMoveSetVibration(handle, 0) == kNotInit);
+    Require(sceMoveSetLightSphere(handle, 0, 0, 0) == kNotInit);
     Require(sceMoveTerm() == kNotInit);
     Require(buffer.Untouched());
     Require(count == -7);
@@ -91,8 +98,12 @@ void RequireUnknownHandle(std::int32_t handle) {
     Require(sceMoveGetExtensionPortInfo(handle, buffer.bytes) == kInvalidHandle);
     Require(sceMoveReadStateLatest(handle, buffer.bytes) == kInvalidHandle);
     Require(sceMoveReadStateRecent(handle, 0, buffer.bytes, &count) == kInvalidHandle);
+    Require(sceMoveReadStateRecent(handle, 1, buffer.bytes, &count) == kInvalidHandle);
+    Require(sceMoveReadStateRecent(handle, 1000, buffer.bytes, &count) == kInvalidHandle);
     Require(sceMoveSetVibration(handle, 0xFF) == kInvalidHandle);
+    Require(sceMoveSetVibration(handle, 0) == kInvalidHandle);
     Require(sceMoveSetLightSphere(handle, 0xFF, 0, 0) == kInvalidHandle);
+    Require(sceMoveSetLightSphere(handle, 0, 0, 0) == kInvalidHandle);
     Require(sceMoveResetLightSphere(handle) == kInvalidHandle);
     Require(sceMoveGetDeviceInfo(handle, nullptr) == kInvalidArg);
     Require(sceMoveGetExtensionPortInfo(handle, nullptr) == kInvalidArg);
@@ -134,9 +145,11 @@ int main() {
     Require(sceMoveReadStateRecent(first, -1, buffer.bytes, &count) == kInvalidArg);
     Require(sceMoveReadStateRecent(first, 0, nullptr, &count) == kInvalidArg);
     Require(sceMoveReadStateRecent(first, 0, buffer.bytes, nullptr) == kInvalidArg);
+    Require(sceMoveReadStateRecent(first, -1, nullptr, nullptr) == kInvalidArg);
 
     SetCompiledSdkVersion(kLastSdkAllowingNullData);
     Require(sceMoveReadStateRecent(first, 0, nullptr, &count) == kNoControllerConnected);
+    Require(sceMoveReadStateRecent(first, 1, nullptr, &count) == kNoControllerConnected);
     Require(sceMoveReadStateRecent(first, -1, nullptr, &count) == kInvalidArg);
     Require(sceMoveReadStateRecent(first, 0, nullptr, nullptr) == kInvalidArg);
     Require(sceMoveReadStateRecent(first + 1, 0, nullptr, &count) == kInvalidHandle);
@@ -148,12 +161,17 @@ int main() {
     Require(sceMoveGetExtensionPortInfo(first, buffer.bytes) == kNoControllerConnected);
     Require(sceMoveReadStateLatest(first, buffer.bytes) == kNoControllerConnected);
     Require(sceMoveReadStateRecent(first, 0, buffer.bytes, &count) == kNoControllerConnected);
+    Require(sceMoveReadStateRecent(first, 1, buffer.bytes, &count) == kNoControllerConnected);
+    Require(sceMoveReadStateRecent(first, 1000, buffer.bytes, &count) == kNoControllerConnected);
     Require(buffer.Untouched());
     Require(count == -7);
 
     Require(sceMoveSetVibration(first, 0xFF) == kNoControllerConnected);
     Require(sceMoveSetLightSphere(first, 0, 0xFF, 0) == kNoControllerConnected);
+    Require(sceMoveSetLightSphere(first, 0, 0, 0) == kNoControllerConnected);
+    Require(sceMoveSetLightSphere(first, 0xFF, 0xFF, 0xFF) == kNoControllerConnected);
     Require(sceMoveResetLightSphere(first) == kOk);
+    Require(sceMoveResetLightSphere(second) == kOk);
 
     Require(sceMoveClose(first) == kOk);
     RequireUnknownHandle(first);
