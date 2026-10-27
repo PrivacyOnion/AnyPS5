@@ -108,6 +108,12 @@ static int testSync() {
     ok &= expect(sceNpLwMutexUnlock(&recursive) == 0, "the recursive mutex did not unlock");
     ok &= expect(sceNpLwMutexDestroy(&recursive) == 0, "the recursive mutex was not destroyed");
 
+    PthreadMutex plainRecursive = nullptr;
+    ok &= expect(sceNpMutexInit(&plainRecursive, "np-plain-rec", 1) == 0 && plainRecursive, "a plain recursive mutex was not created");
+    ok &= expect(sceNpMutexTryLock(&plainRecursive) == 0 && sceNpMutexTryLock(&plainRecursive) == 0, "flag 1 did not make plain mutex recursive");
+    ok &= expect(sceNpMutexUnlock(&plainRecursive) == 0 && sceNpMutexUnlock(&plainRecursive) == 0, "plain recursive mutex did not unlock twice");
+    ok &= expect(sceNpMutexDestroy(&plainRecursive) == 0, "plain recursive mutex was not destroyed");
+
     PthreadCond cond = nullptr;
     ok &= expect(sceNpCondInit(&cond, "np-cond", 0) == 0 && cond, "a condition was not created");
     ok &= expect(sceNpMutexLock(&plain) == 0, "the plain mutex did not lock for the wait");
