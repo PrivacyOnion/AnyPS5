@@ -478,6 +478,10 @@ int APS5_VABI sceRtcGetCurrentClockUtc(RtcDateTime* time) {
     return sceRtcGetCurrentClock(time, 0);
 }
 
+int APS5_VABI sceRtcGetCurrentTickUtc(RtcTick* tick) {
+    return sceRtcGetCurrentTick(tick);
+}
+
 int APS5_VABI sceRtcConvertUtcToLocalTime(const RtcTick* utc, RtcTick* local_time) {
     if (!utc || !local_time) return SCE_RTC_ERROR_INVALID_POINTER;
     if (utc->tick > MAX_TICK) return SCE_RTC_ERROR_INVALID_VALUE;
@@ -566,6 +570,22 @@ int APS5_VABI sceRtcSetDosTime(RtcDateTime* time, uint32_t dos_time) {
     time->second = static_cast<std::uint16_t>((dos_time & 0x1f) * 2);
     time->microsecond = 0;
     return 0;
+}
+
+int APS5_VABI sceRtcConvertDateTimeToDosTime(const RtcDateTime* time, uint32_t* dos_time) {
+    return sceRtcGetDosTime(time, dos_time);
+}
+
+int APS5_VABI sceRtcConvertDosTimeToDateTime(uint32_t dos_time, RtcDateTime* time) {
+    return sceRtcSetDosTime(time, dos_time);
+}
+
+int APS5_VABI sceRtcConvertDateTimeToWin32Time(const RtcDateTime* time, uint64_t* win32_time) {
+    return sceRtcGetWin32FileTime(time, win32_time);
+}
+
+int APS5_VABI sceRtcConvertWin32TimeToDateTime(uint64_t win32_time, RtcDateTime* time) {
+    return sceRtcSetWin32FileTime(time, win32_time);
 }
 
 int APS5_VABI sceRtcFormatRFC3339(char* dateTime, const RtcTick* utc, int timeZoneMinutes) {

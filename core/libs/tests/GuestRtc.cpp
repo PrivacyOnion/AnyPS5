@@ -222,6 +222,21 @@ int main(int argc, char** argv) {
     Require(sceRtcSetDosTime(&converted, 0xff9fbf7du) == 0 && Equal(converted, RtcDateTime{2107, 12, 31, 23, 59, 58, 0}));
     Require(sceRtcSetDosTime(&converted, 0x80210000u) == 0 && Equal(converted, RtcDateTime{2044, 1, 1, 0, 0, 0, 0}));
 
+    Require(sceRtcConvertDateTimeToDosTime(&dosDate, &dosTime) == 0 && dosTime == 0x585d645cu);
+    Require(sceRtcConvertDateTimeToDosTime(nullptr, &dosTime) == invalidPointer);
+    Require(sceRtcConvertDateTimeToDosTime(&dosDate, nullptr) == invalidPointer);
+    Require(sceRtcConvertDosTimeToDateTime(0x585d645cu, &converted) == 0 && Equal(converted, RtcDateTime{2024, 2, 29, 12, 34, 56, 0}));
+    Require(sceRtcConvertDosTimeToDateTime(0, nullptr) == invalidPointer);
+    Require(sceRtcConvertDateTimeToWin32Time(&epoch, &fileTime) == 0 && fileTime == 116444736000000000ull);
+    Require(sceRtcConvertDateTimeToWin32Time(nullptr, &fileTime) == invalidPointer);
+    Require(sceRtcConvertDateTimeToWin32Time(&epoch, nullptr) == invalidPointer);
+    Require(sceRtcConvertWin32TimeToDateTime(116444736000000000ull, &converted) == 0 && Equal(converted, epoch));
+    Require(sceRtcConvertWin32TimeToDateTime(116444736000000000ull, nullptr) == invalidPointer);
+
+    RtcTick utcTick{};
+    Require(sceRtcGetCurrentTickUtc(nullptr) == invalidPointer);
+    Require(sceRtcGetCurrentTickUtc(&utcTick) == 0 && utcTick.tick > 0);
+
     char text[32];
     tick.tick = leapDayTick;
     Require(sceRtcFormatRFC3339(text, &tick, 0) == 0 && std::strcmp(text, "2024-02-29T12:34:56.78Z") == 0);

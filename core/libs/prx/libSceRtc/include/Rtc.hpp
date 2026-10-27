@@ -18,6 +18,7 @@ int APS5_VABI sceRtcGetCurrentNetworkTick(RtcTick* tick);
 int APS5_VABI sceRtcGetCurrentClock(RtcDateTime* time, int timeZoneMinutes);
 int APS5_VABI sceRtcGetCurrentClockLocalTime(RtcDateTime* time);
 int APS5_VABI sceRtcGetCurrentClockUtc(RtcDateTime* time);
+int APS5_VABI sceRtcGetCurrentTickUtc(RtcTick* tick);
 int APS5_VABI sceRtcConvertUtcToLocalTime(const RtcTick* utc, RtcTick* localTime);
 int APS5_VABI sceRtcConvertLocalTimeToUtc(const RtcTick* localTime, RtcTick* utc);
 int APS5_VABI sceRtcGetTime_t(const RtcDateTime* time, int64_t* seconds);
@@ -28,6 +29,10 @@ int APS5_VABI sceRtcGetWin32FileTime(const RtcDateTime* time, uint64_t* win32Tim
 int APS5_VABI sceRtcSetWin32FileTime(RtcDateTime* time, uint64_t win32Time);
 int APS5_VABI sceRtcGetDosTime(const RtcDateTime* time, uint32_t* dosTime);
 int APS5_VABI sceRtcSetDosTime(RtcDateTime* time, uint32_t dosTime);
+int APS5_VABI sceRtcConvertDateTimeToDosTime(const RtcDateTime* time, uint32_t* dosTime);
+int APS5_VABI sceRtcConvertDosTimeToDateTime(uint32_t dosTime, RtcDateTime* time);
+int APS5_VABI sceRtcConvertDateTimeToWin32Time(const RtcDateTime* time, uint64_t* win32Time);
+int APS5_VABI sceRtcConvertWin32TimeToDateTime(uint64_t win32Time, RtcDateTime* time);
 int APS5_VABI sceRtcFormatRFC3339(char* dateTime, const RtcTick* utc, int timeZoneMinutes);
 int APS5_VABI sceRtcFormatRFC3339LocalTime(char* dateTime, const RtcTick* utc);
 int APS5_VABI sceRtcFormatRFC2822(char* dateTime, const RtcTick* utc, int timeZoneMinutes);
