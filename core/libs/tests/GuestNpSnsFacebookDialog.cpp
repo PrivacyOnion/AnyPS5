@@ -37,6 +37,7 @@ int main() {
     Require(sceNpSnsFacebookDialogUpdateStatus() == kStatusInitialized);
 
     Require(sceNpSnsFacebookDialogOpen(nullptr) == kErrArgNull);
+    Require(sceNpSnsFacebookDialogGetResult(nullptr) == kErrArgNull);
     Require(sceNpSnsFacebookDialogGetResult(result) == kErrNotFinished);
 
     Require(sceNpSnsFacebookDialogOpen(&param) == 0);
