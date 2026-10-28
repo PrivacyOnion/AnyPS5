@@ -1,0 +1,15 @@
+add_library(libSceKbEmulate SHARED EXCLUDE_FROM_ALL Export.cpp)
+target_include_directories(libSceKbEmulate PRIVATE ${LIBS_INCLUDE_DIR})
+configure_windows_unwind(libSceKbEmulate)
+
+if(BUILD_TESTING)
+    add_test_executable(guest_kbemulate_tests ${LIBS_INCLUDE_DIR}/tests/GuestKbEmulate.cpp)
+    target_include_directories(guest_kbemulate_tests PRIVATE ${LIBS_INCLUDE_DIR})
+    target_link_libraries(guest_kbemulate_tests PRIVATE libSceKbEmulate libc)
+    configure_windows_unwind(guest_kbemulate_tests)
+    add_test(NAME guest_kbemulate COMMAND guest_kbemulate_tests)
+    if(WIN32)
+        set_tests_properties(guest_kbemulate PROPERTIES ENVIRONMENT_MODIFICATION
+            "PATH=path_list_prepend:$<TARGET_FILE_DIR:libSceKbEmulate>")
+    endif()
+endif()
