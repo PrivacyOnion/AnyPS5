@@ -138,6 +138,72 @@ short ScaleProduct(TFloat& value, TFloat factor, TFloat multiplier, long exponen
     return Finite;
 }
 
+constexpr double ErfcNumerator[] = {
+    0.61792832735846070258e-9,
+    0.11684287172270874217e-1,
+    0.95637893500953094717e-1,
+    0.38676415143622898851,
+    0.91231706220035757904,
+    1.25253625614956703876,
+    0.83571382001120956678,
+};
+
+constexpr double ErfcDenominator[] = {
+    0.20709916302643547030e-1,
+    0.16951239053544544290,
+    0.69589694980162046232,
+    1.70158409934440707405,
+    2.55410155085533580188,
+    2.19550662597046521735,
+    0.83571864525686785467,
+};
+
+constexpr float FErfcNumerator[] = {
+    -0.1904329681e-3f,
+    0.3365143039e-2f,
+    0.3904994244f,
+    0.8272613270f,
+};
+
+constexpr float FErfcDenominator[] = {
+    0.7372748054f,
+    1.2764107769f,
+    0.8419510227f,
+};
+
+constexpr long double LErfcNumerator[] = {
+    0.3982366595670504399244521e-12L,
+    0.1030575181954501302353221e-2L,
+    0.1324015678034616536851924e-1L,
+    0.8468413085000757161966266e-1L,
+    0.3372142827713188129837938L,
+    0.8925819419479200421116839L,
+    1.5680950663872533819280129L,
+    1.7077875378129038467960200L,
+    0.9172727087211874336366180L,
+};
+
+constexpr long double LErfcDenominator[] = {
+    0.1826647001857809893554410e-2L,
+    0.2346756505420102427184070e-1L,
+    0.1510120775753143340433125L,
+    0.6094299039184962013668769L,
+    1.6562038680390530271358464L,
+    3.0664204964536552860192478L,
+    3.7457634749394795507231292L,
+    2.7428186078612249378422898L,
+    0.9172727509137699498745190L,
+};
+
+template<typename TFloat, std::size_t N>
+TFloat EvaluatePolynomial(TFloat x, const TFloat (&coefficients)[N]) {
+    TFloat y = coefficients[0];
+    for (std::size_t i = 1; i < N; ++i) {
+        y = y * x + coefficients[i];
+    }
+    return y;
+}
+
 }
 
 extern "C" {
@@ -436,6 +502,28 @@ long double APS5_VABI _LDivide_nid_postfix(long double x, long double y) {
 
 long double APS5_VABI _LRecip_nid_postfix(long double x) {
     return 1.0L / x;
+}
+
+double APS5_VABI _Erfc_nid_postfix(double x) {
+    double z = -x * x;
+    const double y = EvaluatePolynomial(x, ErfcNumerator) / EvaluatePolynomial(x, ErfcDenominator);
+    if (std::isnan(y)) return y;
+    _Exp_nid_postfix(&z, y, 0);
+    return z;
+}
+
+float APS5_VABI _FErfc_nid_postfix(float x) {
+    float z = -x * x;
+    const float y = EvaluatePolynomial(x, FErfcNumerator) / EvaluatePolynomial(x, FErfcDenominator);
+    if (std::isnan(y)) return y;
+    _FExp_nid_postfix(&z, y, 0);
+    return z;
+}
+
+long double APS5_VABI _LErfc_nid_postfix(long double x) {
+    const long double y = EvaluatePolynomial(x, LErfcNumerator) / EvaluatePolynomial(x, LErfcDenominator);
+    if (std::isnan(y)) return y;
+    return expl_nid_postfix(-x * x) * y;
 }
 
 }
