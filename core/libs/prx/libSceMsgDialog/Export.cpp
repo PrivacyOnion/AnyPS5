@@ -153,4 +153,15 @@ int APS5_VABI sceMsgDialogProgressBarSetValue(int target, std::uint32_t rate) {
  std::lock_guard g(g_lock);
  return g_status == kStatusRunning ? kErrOk : kErrNotRunning;
 }
+int APS5_VABI sceMsgDialogGetResult_nid_postfix(void* result) {
+ if (result == nullptr) return kErrArgNull;
+ std::lock_guard g(g_lock);
+ if (g_status != kStatusFinished) return kErrNotRunning;
+ MsgDialogResult out{};
+ out.mode = g_mode;
+ out.result = kErrOk;
+ out.button_id = g_buttonId;
+ std::memcpy(result, &out, sizeof(out));
+ return kErrOk;
+}
 }

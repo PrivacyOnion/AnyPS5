@@ -697,6 +697,16 @@ if(BUILD_TESTING)
             "PATH=path_list_prepend:$<TARGET_FILE_DIR:libSceNpEntitlementAccess>")
     endif()
 
+    add_test_executable(guest_msg_dialog_tests tests/GuestMsgDialog.cpp)
+    target_include_directories(guest_msg_dialog_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+    target_link_libraries(guest_msg_dialog_tests PRIVATE libSceMsgDialog libc)
+    configure_windows_unwind(guest_msg_dialog_tests)
+    add_test(NAME guest_msg_dialog COMMAND guest_msg_dialog_tests)
+    if(WIN32)
+        set_tests_properties(guest_msg_dialog PROPERTIES ENVIRONMENT_MODIFICATION
+            "PATH=path_list_prepend:$<TARGET_FILE_DIR:libSceMsgDialog>")
+    endif()
+
     add_test_executable(guest_signin_dialog_tests tests/GuestSigninDialog.cpp)
     target_include_directories(guest_signin_dialog_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
     target_link_libraries(guest_signin_dialog_tests PRIVATE libSceSigninDialog libc)
