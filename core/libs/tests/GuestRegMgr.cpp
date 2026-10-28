@@ -19,6 +19,8 @@ static bool ReportsNotImplemented(const char* name, TCall call) {
 }
 
 int main() {
+    Require(ReportsNotImplemented("sceRegMgrLogStart_nid_postfix", [&] { sceRegMgrLogStart_nid_postfix(); }));
+
     std::int32_t value = 0;
     Require(ReportsNotImplemented("sceRegMgrNonSysGetInt", [&] { sceRegMgrNonSysGetInt(0, 0, &value); }));
     Require(ReportsNotImplemented("sceRegMgrNonSysGetInt", [&] { sceRegMgrNonSysGetInt(-1, 1, nullptr); }));

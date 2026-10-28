@@ -69,6 +69,7 @@ int APS5_VABI sceRegMgrDrvDataCheckGet(void);
 int APS5_VABI sceRegMgrDrvDataClose(void);
 int APS5_VABI sceRegMgrToolGetInfo(void);
 int APS5_VABI sceRegMgrLogPull(void);
+int APS5_VABI sceRegMgrLogStart_nid_postfix(void);
 int APS5_VABI sceRegMgrCntlStopHdd(void);
 int APS5_VABI sceRegMgrPrintInfo(void);
 
