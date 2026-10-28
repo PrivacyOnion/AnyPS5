@@ -1,8 +1,18 @@
 #include "prx/libSceAudiodec.native/include/Api.hpp"
 #include <cstdint>
 #include <cstddef>
+#include <mutex>
 #include "SceTypes.hpp"
 #include "prx/libc/include/General.hpp"
+
+namespace {
+
+constexpr std::int32_t ERROR_ALREADY_INITIALIZED = static_cast<std::int32_t>(0x807F0003);
+
+std::mutex g_mutex;
+bool g_initialized = false;
+
+} // namespace
 
 extern "C" {
 
@@ -61,6 +71,16 @@ int APS5_VABI sceAudiodecGetContext(void) {
     return 0;
 }
 
+int APS5_VABI sceAudiodecInitLibrary_nid_postfix(void* param) {
+    (void)param;
+    std::lock_guard lock(g_mutex);
+    if (g_initialized) {
+        return ERROR_ALREADY_INITIALIZED;
+    }
+    g_initialized = true;
+    return 0;
+}
+
 int APS5_VABI sceAudiodecInitialize(void) {
     NotImplemented_nid_no_patch(__func__);
     return 0;
@@ -68,6 +88,12 @@ int APS5_VABI sceAudiodecInitialize(void) {
 
 int APS5_VABI sceAudiodecRegisterCodec(void) {
     NotImplemented_nid_no_patch(__func__);
+    return 0;
+}
+
+int APS5_VABI sceAudiodecTermLibrary_nid_postfix(void) {
+    std::lock_guard lock(g_mutex);
+    g_initialized = false;
     return 0;
 }
 

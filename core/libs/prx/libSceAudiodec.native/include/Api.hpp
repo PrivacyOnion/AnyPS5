@@ -15,8 +15,10 @@ int APS5_VABI sceAudiodecDecodeWithPriority(void);
 int APS5_VABI sceAudiodecDecodeWithPriorityEx(void);
 int APS5_VABI sceAudiodecDeleteDecoderEx(void);
 int APS5_VABI sceAudiodecGetContext(void);
+int APS5_VABI sceAudiodecInitLibrary_nid_postfix(void* param);
 int APS5_VABI sceAudiodecInitialize(void);
 int APS5_VABI sceAudiodecRegisterCodec(void);
+int APS5_VABI sceAudiodecTermLibrary_nid_postfix(void);
 int APS5_VABI sceAudiodecTerminate(void);
 
 }
