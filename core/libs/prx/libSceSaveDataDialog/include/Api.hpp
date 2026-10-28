@@ -13,4 +13,7 @@ int APS5_VABI sceSaveDataDialogProgressBarInc(int target, uint32_t delta);
 int APS5_VABI sceSaveDataDialogProgressBarSetValue(int target, uint32_t rate);
 int APS5_VABI sceSaveDataDialogTerminate(void);
 
+int APS5_VABI sceSaveDataDialogGetStatus_nid_postfix(void);
+int APS5_VABI sceSaveDataDialogUpdateStatus_nid_postfix(void);
+
 }

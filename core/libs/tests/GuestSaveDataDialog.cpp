@@ -27,6 +27,7 @@ int main() {
     param.size = sizeof(param);
 
     Require(sceSaveDataDialogGetStatus() == SAVE_DATA_DIALOG_STATUS_NONE, "initial status");
+    Require(sceSaveDataDialogUpdateStatus() == SAVE_DATA_DIALOG_STATUS_NONE, "initial update status");
     Require(sceSaveDataDialogTerminate() == SAVE_DATA_DIALOG_ERROR_NOT_INITIALIZED, "terminate before init");
     Require(sceSaveDataDialogOpen(&param) == SAVE_DATA_DIALOG_ERROR_INVALID_STATE, "open before init");
     Require(sceSaveDataDialogClose(nullptr) == SAVE_DATA_DIALOG_ERROR_NOT_RUNNING, "close before init");
@@ -36,6 +37,8 @@ int main() {
     Require(sceSaveDataDialogProgressBarSetValue(0, 50) == SAVE_DATA_DIALOG_ERROR_NOT_RUNNING, "progress set value before init");
 
     Require(sceSaveDataDialogInitialize() == 0, "initialize");
+    Require(sceSaveDataDialogGetStatus() == SAVE_DATA_DIALOG_STATUS_INITIALIZED, "status before open");
+    Require(sceSaveDataDialogUpdateStatus() == SAVE_DATA_DIALOG_STATUS_INITIALIZED, "update status before open");
     Require(sceSaveDataDialogInitialize() == SAVE_DATA_DIALOG_ERROR_ALREADY_INITIALIZED, "double init");
     Require(sceSaveDataDialogOpen(nullptr) == SAVE_DATA_DIALOG_ERROR_ARG_NULL, "open with null param");
     Require(sceSaveDataDialogClose(nullptr) == SAVE_DATA_DIALOG_ERROR_NOT_RUNNING, "close while initialized not running");
@@ -68,8 +71,10 @@ int main() {
         Require(sceSaveDataDialogGetResult(&uninitResult) == SAVE_DATA_DIALOG_ERROR_NOT_FINISHED,
                 "get result while running");
         Require(sceSaveDataDialogClose(nullptr) == 0, "close save progress");
+        Require(sceSaveDataDialogGetStatus() == SAVE_DATA_DIALOG_STATUS_FINISHED,
+                "closing save progress must finish it (get status)");
         Require(sceSaveDataDialogUpdateStatus() == SAVE_DATA_DIALOG_STATUS_FINISHED,
-                "closing save progress must finish it");
+                "closing save progress must finish it (update status)");
         SaveDataDirName selected{};
         SaveDataDialogResult result{};
         result.dir_name = &selected;
@@ -85,9 +90,12 @@ int main() {
     RequireRunning();
     Require(sceSaveDataDialogTerminate() == 0, "terminate while running");
     Require(sceSaveDataDialogGetStatus() == SAVE_DATA_DIALOG_STATUS_NONE, "terminated state");
+    Require(sceSaveDataDialogUpdateStatus() == SAVE_DATA_DIALOG_STATUS_NONE, "terminated state update status");
     Require(sceSaveDataDialogTerminate() == SAVE_DATA_DIALOG_ERROR_NOT_INITIALIZED, "terminate after terminate");
 
     Require(sceSaveDataDialogInitialize() == 0, "re-initialize");
+    Require(sceSaveDataDialogGetStatus() == SAVE_DATA_DIALOG_STATUS_INITIALIZED, "re-init status before open");
+    Require(sceSaveDataDialogUpdateStatus() == SAVE_DATA_DIALOG_STATUS_INITIALIZED, "re-init update status before open");
     param.mode = 1;
     Require(sceSaveDataDialogOpen(&param) == 0, "open selection dialog");
     Require(sceSaveDataDialogUpdateStatus() == SAVE_DATA_DIALOG_STATUS_FINISHED,
@@ -95,8 +103,11 @@ int main() {
     Require(sceSaveDataDialogTerminate() == 0, "terminate");
     Require(sceSaveDataDialogTerminate() == SAVE_DATA_DIALOG_ERROR_NOT_INITIALIZED, "terminate when already terminated");
     Require(sceSaveDataDialogGetStatus() == SAVE_DATA_DIALOG_STATUS_NONE, "terminated state");
+    Require(sceSaveDataDialogUpdateStatus() == SAVE_DATA_DIALOG_STATUS_NONE, "terminated state update status");
 
     Require(sceSaveDataDialogInitialize() == 0, "re-initialize for empty selection");
+    Require(sceSaveDataDialogGetStatus() == SAVE_DATA_DIALOG_STATUS_INITIALIZED, "empty selection status before open");
+    Require(sceSaveDataDialogUpdateStatus() == SAVE_DATA_DIALOG_STATUS_INITIALIZED, "empty selection update status before open");
     SaveDataDialogParam emptySelectionParam{};
     emptySelectionParam.size = sizeof(emptySelectionParam);
     emptySelectionParam.mode = 1;
@@ -111,8 +122,12 @@ int main() {
     Require(emptySelectionResult.mode == emptySelectionParam.mode &&
             emptySelectionResult.result == SAVE_DATA_DIALOG_RESULT_OK, "selection result status");
     Require(sceSaveDataDialogTerminate() == 0, "terminate selection");
+    Require(sceSaveDataDialogGetStatus() == SAVE_DATA_DIALOG_STATUS_NONE, "terminated selection state");
+    Require(sceSaveDataDialogUpdateStatus() == SAVE_DATA_DIALOG_STATUS_NONE, "terminated selection update status");
 
     Require(sceSaveDataDialogInitialize() == 0, "re-initialize for empty result");
+    Require(sceSaveDataDialogGetStatus() == SAVE_DATA_DIALOG_STATUS_INITIALIZED, "empty result status before open");
+    Require(sceSaveDataDialogUpdateStatus() == SAVE_DATA_DIALOG_STATUS_INITIALIZED, "empty result update status before open");
     param = {};
     param.size = sizeof(param);
     param.mode = SAVE_DATA_DIALOG_MODE_PROGRESS_BAR;
@@ -126,6 +141,8 @@ int main() {
     Require(sceSaveDataDialogGetResult(&emptyResult) == 0, "read empty result");
     Require(emptySelected.data[0] == '\0', "empty directory name must be null-terminated");
     Require(sceSaveDataDialogTerminate() == 0, "terminate empty progress");
+    Require(sceSaveDataDialogGetStatus() == SAVE_DATA_DIALOG_STATUS_NONE, "terminated empty progress state");
+    Require(sceSaveDataDialogUpdateStatus() == SAVE_DATA_DIALOG_STATUS_NONE, "terminated empty progress update status");
 
     Require(sceSaveDataDialogProgressBarInc(0, 10) == SAVE_DATA_DIALOG_ERROR_NOT_RUNNING, "progress inc after terminate");
     Require(sceSaveDataDialogProgressBarSetValue(0, 50) == SAVE_DATA_DIALOG_ERROR_NOT_RUNNING, "progress set value after terminate");
