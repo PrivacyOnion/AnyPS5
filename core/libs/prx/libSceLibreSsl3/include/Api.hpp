@@ -72,7 +72,7 @@ int APS5_VABI X509_PUBKEY_get0_param_nid_postfix(void);
 int APS5_VABI X509_STORE_CTX_free_nid_postfix(void);
 int APS5_VABI X509_STORE_CTX_init_nid_postfix(void);
 int APS5_VABI X509_STORE_CTX_new_nid_postfix(void);
-int APS5_VABI X509_STORE_up_ref_nid_postfix(void);
+int APS5_VABI X509_STORE_up_ref_nid_postfix(LibreSslX509Store* store);
 int APS5_VABI X509_get0_extensions_nid_postfix(void);
 int APS5_VABI X509_get0_notAfter_nid_postfix(void);
 int APS5_VABI X509_get0_notBefore_nid_postfix(void);

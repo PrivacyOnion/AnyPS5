@@ -7,6 +7,8 @@
 namespace {
 
 static_assert(std::atomic_ref<std::int32_t>::required_alignment <= alignof(std::int32_t));
+static_assert(sizeof(LibreSslX509Store) == 136);
+static_assert(offsetof(LibreSslX509Store, references) == 128);
 
 int Retain_nid_no_patch(std::int32_t& references) {
     std::atomic_ref<std::int32_t> count(references);
@@ -39,6 +41,12 @@ int APS5_VABI SSL_CTX_up_ref_nid_postfix(LibreSsl3SslCtx* ctx) {
     if (!ctx)
         throw std::invalid_argument("SSL_CTX_up_ref requires a context");
     return Retain_nid_no_patch(ctx->references);
+}
+
+int APS5_VABI X509_STORE_up_ref_nid_postfix(LibreSslX509Store* store) {
+    if (!store)
+        throw std::invalid_argument("X509_STORE_up_ref requires a store");
+    return Retain_nid_no_patch(store->references);
 }
 
 }
