@@ -33,11 +33,15 @@ int main() {
     Require(sceErrorDialogClose() == kErrInvalidState);
     Require(sceErrorDialogOpen(nullptr) == kErrInvalidState);
     Require(sceErrorDialogOpen(&param) == kErrInvalidState);
+    Require(sceErrorDialogOpenDetail() == kErrUnexpectedFatal);
+    Require(sceErrorDialogOpenWithReport() == kErrUnexpectedFatal);
 
     Require(sceErrorDialogInitialize() == 0);
     Require(sceErrorDialogInitialize() == kErrAlreadyInitialized);
     Require(sceErrorDialogGetStatus() == 1);
     Require(sceErrorDialogUpdateStatus() == 1);
+    Require(sceErrorDialogOpenDetail() == kErrUnexpectedFatal);
+    Require(sceErrorDialogOpenWithReport() == kErrUnexpectedFatal);
 
     Require(sceErrorDialogClose() == kErrInvalidState);
 
@@ -56,6 +60,7 @@ int main() {
 
     Require(sceErrorDialogUpdateStatus() == kStatusFinished);
     Require(sceErrorDialogGetStatus() == kStatusFinished);
+    Require(sceErrorDialogClose() == kErrInvalidState);
 
     Require(sceErrorDialogOpen(&param) == 0);
     Require(sceErrorDialogGetStatus() == kStatusRunning);
