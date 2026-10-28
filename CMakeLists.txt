@@ -274,6 +274,8 @@ if(BUILD_TESTING)
             ${CMAKE_CURRENT_SOURCE_DIR}/tools/tests/test_debt_split.py)
         add_test(NAME stubgen_stdout_newlines COMMAND ${Python3_EXECUTABLE}
             ${CMAKE_CURRENT_SOURCE_DIR}/tools/tests/test_stubgen_stdout_newlines.py)
+        add_test(NAME relinker_fuzz_seeds COMMAND ${Python3_EXECUTABLE}
+            ${CMAKE_CURRENT_SOURCE_DIR}/tools/tests/test_relinker_fuzz_seeds.py)
         add_test(NAME hardware_oracle COMMAND ${Python3_EXECUTABLE}
             ${CMAKE_CURRENT_SOURCE_DIR}/tools/hw-oracle/test_hw_oracle.py)
         add_test(NAME hardware_oracle_compare COMMAND ${Python3_EXECUTABLE}
