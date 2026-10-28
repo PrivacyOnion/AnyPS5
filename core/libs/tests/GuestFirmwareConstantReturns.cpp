@@ -40,6 +40,7 @@ void CheckSdma() {
     Require(sceSdmaQueryWorkingBufferSize() == 0x8000);
     Require(sceSdmaFlushAllWithEvent() == SdmaError);
     Require(sceSdmaWaitForEvent() == SdmaError);
+    _sceSdmaNop_nid_postfix();
 }
 
 void CheckSsl() {

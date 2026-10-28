@@ -4,6 +4,7 @@
 
 extern "C" {
 
+void APS5_VABI _sceSdmaNop_nid_postfix(void);
 int APS5_VABI sceSdmaBeginQueueMode(void);
 int APS5_VABI sceSdmaCancelQueue(void);
 int APS5_VABI sceSdmaClose(void);

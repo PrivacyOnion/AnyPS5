@@ -6,6 +6,8 @@
 
 extern "C" {
 
+void APS5_VABI _sceSdmaNop_nid_postfix(void) {}
+
 APS5_DUMMY_FUN
 int APS5_VABI sceSdmaBeginQueueMode(void) {
     NotImplemented_nid_no_patch(__func__);
