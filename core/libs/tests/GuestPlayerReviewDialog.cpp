@@ -54,6 +54,12 @@ int main() {
     param.base.magic = 0;
     Require(scePlayerReviewDialogOpen(&param) == static_cast<int>(0x80B8000Au));
     param.base.magic = static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(&param)) - 1060003575u;
+    param.base.reserved[0] = 1;
+    Require(scePlayerReviewDialogOpen(&param) == static_cast<int>(0x80B8000Au));
+    param.base.reserved[0] = 0;
+    param.base.reserved[35] = 1;
+    Require(scePlayerReviewDialogOpen(&param) == static_cast<int>(0x80B8000Au));
+    param.base.reserved[35] = 0;
     param.size = 0;
     Require(scePlayerReviewDialogOpen(&param) == static_cast<int>(0x80B8000Au));
     param.size = sizeof(param);
@@ -80,6 +86,15 @@ int main() {
     Require(result[0] == -1 && result[1] == -1 && result[3] == -1);
     Require(result[2] == COMMON_DIALOG_RESULT_USER_CANCELED);
     Require(scePlayerReviewDialogClose() == static_cast<int>(0x80B8000Bu));
+    Require(scePlayerReviewDialogGetStatus() == COMMON_DIALOG_STATUS_FINISHED);
+    Require(scePlayerReviewDialogUpdateStatus() == COMMON_DIALOG_STATUS_FINISHED);
+    Require(scePlayerReviewDialogOpen(nullptr) == static_cast<int>(0x80B8000Du));
+    Require(scePlayerReviewDialogGetStatus() == COMMON_DIALOG_STATUS_FINISHED);
+    param.size = 0;
+    Require(scePlayerReviewDialogOpen(&param) == static_cast<int>(0x80B8000Au));
+    Require(scePlayerReviewDialogGetStatus() == COMMON_DIALOG_STATUS_FINISHED);
+    param.size = sizeof(param);
+    Require(scePlayerReviewDialogOpen(&param) == 0);
     Require(scePlayerReviewDialogGetStatus() == COMMON_DIALOG_STATUS_FINISHED);
     Require(scePlayerReviewDialogUpdateStatus() == COMMON_DIALOG_STATUS_FINISHED);
     Require(scePlayerReviewDialogTerminate() == 0);
