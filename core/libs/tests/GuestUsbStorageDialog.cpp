@@ -95,8 +95,12 @@ int main() {
     Require(sceUsbStorageDialogTerminate() == 0);
     Require(sceUsbStorageDialogTerminate() == kErrNotInitialized);
     Require(sceUsbStorageDialogOpen(nullptr) == kErrArgNull);
+    Require(sceUsbStorageDialogOpen(&param) == kErrNotInitialized);
+    Require(sceUsbStorageDialogClose() == kErrNotInitialized);
     Require(sceUsbStorageDialogGetResult(nullptr) == kErrArgNull);
+    Require(sceUsbStorageDialogGetResult(&result) == kErrNotInitialized);
     Require(sceUsbStorageDialogGetStatus() == kStatusNone);
+    Require(sceUsbStorageDialogUpdateStatus() == kStatusNone);
 
     Require(sceUsbStorageDialogInitialize() == 0);
     Require(sceUsbStorageDialogOpen(&param) == 0);
