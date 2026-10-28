@@ -15,6 +15,8 @@ constexpr int kStatusFinished = 3;
 constexpr int kErrNotInitialized = static_cast<int>(0x80B80003);
 constexpr int kErrAlreadyInitialized = static_cast<int>(0x80B80004);
 constexpr int kErrNotFinished = static_cast<int>(0x80B80005);
+constexpr int kErrInvalidArgument = static_cast<int>(0x80B8000A);
+constexpr int kErrNotRunning = static_cast<int>(0x80B8000B);
 constexpr int kErrArgNull = static_cast<int>(0x80B8000D);
 constexpr int kResultUserCanceled = 1;
 
@@ -50,6 +52,19 @@ int main() {
     Require(param.padding1 == 0);
     Require(std::all_of(std::begin(guarded.guard), std::end(guarded.guard), [](std::uint8_t value) { return value == 0xA5; }));
     param.userId = USER_SERVICE_INITIAL_USER_ID;
+    param.base.size = 0;
+    Require(scePlayerSelectionDialogOpen(&param) == kErrInvalidArgument);
+    param.base.size = sizeof(param.base);
+    const auto validMagic = param.base.magic;
+    param.base.magic = 0;
+    Require(scePlayerSelectionDialogOpen(&param) == kErrInvalidArgument);
+    param.base.magic = validMagic;
+    param.base.reserved[0] = 1;
+    Require(scePlayerSelectionDialogOpen(&param) == kErrInvalidArgument);
+    param.base.reserved[0] = 0;
+    param.base.reserved[35] = 1;
+    Require(scePlayerSelectionDialogOpen(&param) == kErrInvalidArgument);
+    param.base.reserved[35] = 0;
     Require(scePlayerSelectionDialogOpen(&param) == kErrNotInitialized);
     Require(scePlayerSelectionDialogClose() == kErrNotInitialized);
     Require(scePlayerSelectionDialogGetResult(nullptr) == kErrArgNull);
@@ -61,6 +76,20 @@ int main() {
     Require(scePlayerSelectionDialogInitialize() == kErrAlreadyInitialized);
     Require(scePlayerSelectionDialogGetStatus() == 1);
     Require(scePlayerSelectionDialogUpdateStatus() == 1);
+
+    Require(scePlayerSelectionDialogClose() == kErrNotRunning);
+    Require(scePlayerSelectionDialogGetStatus() == 1);
+    Require(scePlayerSelectionDialogUpdateStatus() == 1);
+
+    param.userId = -1;
+    Require(scePlayerSelectionDialogOpen(&param) == kErrInvalidArgument);
+    param.userId = 42;
+    Require(scePlayerSelectionDialogOpen(&param) == kErrInvalidArgument);
+    param.userId = USER_SERVICE_INITIAL_USER_ID;
+
+    param.playerCount = 257;
+    Require(scePlayerSelectionDialogOpen(&param) == kErrInvalidArgument);
+    param.playerCount = 0;
 
     Require(scePlayerSelectionDialogOpen(nullptr) == kErrArgNull);
     Require(scePlayerSelectionDialogGetResult(&result) == kErrNotFinished);
