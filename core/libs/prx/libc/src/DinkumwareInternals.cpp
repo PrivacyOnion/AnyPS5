@@ -438,4 +438,16 @@ long double APS5_VABI _LRecip_nid_postfix(long double x) {
     return 1.0L / x;
 }
 
+double APS5_VABI _Rint_nid_postfix(double x) {
+    return rint_nid_postfix(x);
+}
+
+float APS5_VABI _FRint_nid_postfix(float x) {
+    return rintf_nid_postfix(x);
+}
+
+long double APS5_VABI _LRint_nid_postfix(long double x) {
+    return rintl_nid_postfix(x);
+}
+
 }

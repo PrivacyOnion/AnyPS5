@@ -6,6 +6,8 @@
 
 ### Unknown function info
 
+- [_Rint, _FRint and _LRint](../../../core/libs/prx/libc/src/DinkumwareInternals.cpp) (libc, NIDs `TzxDRcns9e4`, `TLvAYmLtdVw`, `fJmOr59K8QY`) are listed in the [PS5 3.20 export inventory](https://github.com/DNNDHH/PS5-3.20_Libs/blob/b2a77c09cd71c01f34c790cfbe98c751a13262ad/libSceLibcInternal.c). The helpers take the same argument as `rint`, `rintf` and `rintl` and forward to them; their console signatures, results and floating-point exception behaviour are not verified.
+
 - [frexpf](../../../core/libs/prx/libc/src/Math.cpp) (libc) - follows the bundled PPSA03766 implementation: exponent-bit decomposition, conditional single-precision subnormal scaling, zero exponent for zero/NaN/infinity, and unchanged signaling NaNs. PPSA07923 agrees on results/exponents but unconditionally scales finite inputs, additionally raising overflow/inexact on large values; that SDK variant is not reproduced. Masked-exception observations cover rounding, DAZ/FTZ and sticky flags; unmasked traps and other SDK versions are unverified.
 
 - [strtonum](../../../core/libs/prx/libc/src/StringExtensions.cpp) (libc) is unverified on the console. Its signature, decimal parsing, inclusive bounds, error strings, error precedence and errno preservation follow [FreeBSD 11.4 strtonum.c](https://github.com/freebsd/freebsd-src/blob/8c639945a44588f6cfdddfb057bb5aad88735da0/lib/libc/stdlib/strtonum.c). Parsing uses the host `strtoll` with base 10. It is not exported by `libSceLibcInternal.sprx` on a PS5 (firmware 13.60), so a payload process cannot call it there

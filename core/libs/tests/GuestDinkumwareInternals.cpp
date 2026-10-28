@@ -399,6 +399,10 @@ void TestDispatch() {
     Require(_LSin_nid_postfix(0.5L, 0) == std::sin(0.5L) && _LSin_nid_postfix(0.5L, 3) == std::cos(0.5L), "_LSin");
     Require(_Log_nid_postfix(8.0, 0) == std::log(8.0) && _Log_nid_postfix(1000.0, 1) == 3.0 && _Log_nid_postfix(1000.0, 5) == 3.0 && _Log_nid_postfix(8.0, -1) == 3.0, "_Log");
     Require(_FLog_nid_postfix(8.0f, 0) == std::log(8.0f) && _FLog_nid_postfix(100.0f, 1) == 2.0f && _FLog_nid_postfix(8.0f, -3) == 3.0f, "_FLog");
+    Require(_Rint_nid_postfix(1.4) == 1.0 && _Rint_nid_postfix(1.6) == 2.0, "_Rint");
+    Require(_FRint_nid_postfix(1.4f) == 1.0f && _FRint_nid_postfix(1.6f) == 2.0f, "_FRint");
+    Require(_LRint_nid_postfix(1.4L) == 1.0L && _LRint_nid_postfix(1.6L) == 2.0L, "_LRint");
+    Require(_Rint_nid_postfix(0.5) == 0.0 && _Rint_nid_postfix(1.5) == 2.0 && _Rint_nid_postfix(2.5) == 2.0, "_Rint ties to even");
 }
 
 void TestLongDoubleHelpers() {
