@@ -138,6 +138,45 @@ short ScaleProduct(TFloat& value, TFloat factor, TFloat multiplier, long exponen
     return Finite;
 }
 
+template<typename TFloat>
+TFloat ScaledHypot(TFloat x, TFloat y, int* exponent) {
+    if (exponent == nullptr) throw std::invalid_argument("_Hypot: null exponent");
+    *exponent = 0;
+    if (std::isnan(x)) return x;
+    if (std::isnan(y)) return y;
+    if (std::isinf(x) || std::isinf(y)) return std::numeric_limits<TFloat>::infinity();
+    int xExponent = 0;
+    int yExponent = 0;
+    x = std::frexp(std::fabs(x), &xExponent);
+    y = std::frexp(std::fabs(y), &yExponent);
+    if (y == static_cast<TFloat>(0)) {
+        if (x == static_cast<TFloat>(0)) return static_cast<TFloat>(0);
+    } else if (x == static_cast<TFloat>(0) || xExponent < yExponent || (xExponent == yExponent && x < y)) {
+        std::swap(xExponent, yExponent);
+        std::swap(x, y);
+    }
+    *exponent = (xExponent / 4) * 2;
+    if (*exponent == 0) *exponent = 2;
+    x = std::scalbn(x, xExponent - *exponent);
+    y = std::scalbn(y, yExponent - *exponent);
+    TFloat z = x - y;
+    if (z != x) {
+        if (y < z) {
+            const TFloat q = x / y;
+            z = x + y / (q + std::sqrt(q * q + static_cast<TFloat>(1)));
+        } else {
+            constexpr TFloat Root2 = static_cast<TFloat>(1.4142135623730950488016887242096982L);
+            constexpr TFloat OnePlusRoot2High = static_cast<TFloat>(2.4142L);
+            constexpr TFloat OnePlusRoot2Low = static_cast<TFloat>(0.0000135623730950488016887242096980785698L);
+            const TFloat q = z / y;
+            const TFloat r = (q + static_cast<TFloat>(2)) * q;
+            const TFloat s = r / (Root2 + std::sqrt(r + static_cast<TFloat>(2))) + OnePlusRoot2Low + q + OnePlusRoot2High;
+            z = x + y / s;
+        }
+    }
+    return z;
+}
+
 }
 
 extern "C" {
@@ -436,6 +475,18 @@ long double APS5_VABI _LDivide_nid_postfix(long double x, long double y) {
 
 long double APS5_VABI _LRecip_nid_postfix(long double x) {
     return 1.0L / x;
+}
+
+double APS5_VABI _Hypot_nid_postfix(double x, double y, int* exponent) {
+    return ScaledHypot(x, y, exponent);
+}
+
+float APS5_VABI _FHypot_nid_postfix(float x, float y, int* exponent) {
+    return ScaledHypot(x, y, exponent);
+}
+
+long double APS5_VABI _LHypot_nid_postfix(long double x, long double y, int* exponent) {
+    return ScaledHypot(x, y, exponent);
 }
 
 }

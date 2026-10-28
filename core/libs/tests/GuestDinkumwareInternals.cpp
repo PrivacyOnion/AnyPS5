@@ -9,6 +9,7 @@
 #include <cstring>
 #include <initializer_list>
 #include <limits>
+#include <stdexcept>
 
 namespace {
 
@@ -399,6 +400,27 @@ void TestDispatch() {
     Require(_LSin_nid_postfix(0.5L, 0) == std::sin(0.5L) && _LSin_nid_postfix(0.5L, 3) == std::cos(0.5L), "_LSin");
     Require(_Log_nid_postfix(8.0, 0) == std::log(8.0) && _Log_nid_postfix(1000.0, 1) == 3.0 && _Log_nid_postfix(1000.0, 5) == 3.0 && _Log_nid_postfix(8.0, -1) == 3.0, "_Log");
     Require(_FLog_nid_postfix(8.0f, 0) == std::log(8.0f) && _FLog_nid_postfix(100.0f, 1) == 2.0f && _FLog_nid_postfix(8.0f, -3) == 3.0f, "_FLog");
+    int exponent = -1;
+    Require(_Hypot_nid_postfix(3.0, 4.0, &exponent) == 1.25 && exponent == 2, "_Hypot 3 4");
+    Require(_Hypot_nid_postfix(-5.0, 12.0, &exponent) == 3.25 && exponent == 2, "_Hypot -5 12");
+    Require(_Hypot_nid_postfix(0.1, 0.2, &exponent) == 0x1.c9f25c5bfeddap-5 && exponent == 2, "_Hypot 0.1 0.2");
+    Require(_Hypot_nid_postfix(0.0, 0.0, &exponent) == 0.0 && exponent == 0, "_Hypot 0 0");
+    Require(_Hypot_nid_postfix(1e300, 1e300, &exponent) == 1.7281329749791539e150 && exponent == 498, "_Hypot large");
+    Require(_Hypot_nid_postfix(1e-310, 1e-310, &exponent) == 7.584601526487318e-156 && exponent == -514, "_Hypot small");
+    Require(std::isnan(_Hypot_nid_postfix(std::numeric_limits<double>::infinity(), std::numeric_limits<double>::quiet_NaN(), &exponent)) && exponent == 0, "_Hypot inf nan");
+    Require(std::isnan(_Hypot_nid_postfix(std::numeric_limits<double>::quiet_NaN(), 1.0, &exponent)) && exponent == 0, "_Hypot nan 1");
+    Require(std::isinf(_Hypot_nid_postfix(std::numeric_limits<double>::infinity(), 1.0, &exponent)) && exponent == 0, "_Hypot inf 1");
+    Require(_FHypot_nid_postfix(3.0f, 4.0f, &exponent) == 1.25f && exponent == 2, "_FHypot 3 4");
+    Require(std::isnan(_FHypot_nid_postfix(std::numeric_limits<float>::infinity(), std::numeric_limits<float>::quiet_NaN(), &exponent)) && exponent == 0, "_FHypot inf nan");
+    Require(_LHypot_nid_postfix(3.0L, 4.0L, &exponent) == 1.25L && exponent == 2, "_LHypot 3 4");
+    Require(std::isnan(_LHypot_nid_postfix(std::numeric_limits<long double>::infinity(), std::numeric_limits<long double>::quiet_NaN(), &exponent)) && exponent == 0, "_LHypot inf nan");
+    bool threwNull = false;
+    try {
+        static_cast<void>(_Hypot_nid_postfix(3.0, 4.0, nullptr));
+    } catch (const std::invalid_argument&) {
+        threwNull = true;
+    }
+    Require(threwNull, "_Hypot null exponent");
 }
 
 void TestLongDoubleHelpers() {
