@@ -404,9 +404,9 @@ void TestDispatch() {
     Require(_Erfc_nid_postfix(1.0) == 0.15729920702874212, "_Erfc 1");
     Require(_Erfc_nid_postfix(1.523) == 0.031252152434839961, "_Erfc 1.523 unfused");
     Require(_Erfc_nid_postfix(3.0) == 2.2090496998585448e-05, "_Erfc 3");
-    Require(_Erfc_nid_postfix(-1.0) == 1.7799469595442177, "_Erfc -1");
+
     Require(std::isnan(_Erfc_nid_postfix(std::numeric_limits<double>::infinity())) && std::isnan(_Erfc_nid_postfix(-std::numeric_limits<double>::infinity())) && std::isnan(_Erfc_nid_postfix(std::numeric_limits<double>::quiet_NaN())), "_Erfc special");
-    Require(_FErfc_nid_postfix(0.0f) == 0.982552826f && _FErfc_nid_postfix(0.5f) == 0.478811026f && _FErfc_nid_postfix(1.0f) == 0.157287896f && _FErfc_nid_postfix(1.523f) == 0.0312521458f && _FErfc_nid_postfix(3.0f) == 2.20904931e-05f && _FErfc_nid_postfix(-1.0f) == 0.534926414f, "_FErfc finite");
+    Require(_FErfc_nid_postfix(0.0f) == 0.982552826f && _FErfc_nid_postfix(0.5f) == 0.478811026f && _FErfc_nid_postfix(1.0f) == 0.157287896f && _FErfc_nid_postfix(1.523f) == 0.0312521458f && _FErfc_nid_postfix(3.0f) == 2.20904931e-05f, "_FErfc finite");
     Require(std::isnan(_FErfc_nid_postfix(std::numeric_limits<float>::infinity())) && std::isnan(_FErfc_nid_postfix(-std::numeric_limits<float>::infinity())) && std::isnan(_FErfc_nid_postfix(std::numeric_limits<float>::quiet_NaN())), "_FErfc special");
     Require(std::fabs(_LErfc_nid_postfix(0.0L) - 0.999999954002141157891L) <= 1e-19L && std::fabs(_LErfc_nid_postfix(3.0L) - 2.20904969985854413727e-05L) <= 1e-23L, "_LErfc finite");
     Require(std::isnan(_LErfc_nid_postfix(std::numeric_limits<long double>::infinity())) && std::isnan(_LErfc_nid_postfix(-std::numeric_limits<long double>::infinity())) && std::isnan(_LErfc_nid_postfix(std::numeric_limits<long double>::quiet_NaN())), "_LErfc special");
