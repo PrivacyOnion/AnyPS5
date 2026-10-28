@@ -1,3 +1,4 @@
+#include "prx/libSceAudioIn/include/Api.hpp"
 #include "prx/libSceAudioIn/include/AudioIn.hpp"
 #include "prx/libc/include/general/VabiMacros.hpp"
 #include <algorithm>
@@ -82,6 +83,9 @@ void TestValidation() {
         Require(sceAudioInGetGain(badHandle, &gain) == invalidHandle && gain == 1.0f);
         Require(sceAudioInGetRerouteCount(badHandle) == invalidHandle);
         Require(sceAudioInGetGain(badHandle, nullptr) == invalidPointer);
+        Require(sceAudioInExtClose_nid_postfix(badHandle) == invalidHandle);
+        Require(sceAudioInExtInput_nid_postfix(badHandle, nullptr) == invalidHandle);
+        Require(sceAudioInExtSetAecMode_nid_postfix(badHandle, 0) == invalidHandle);
     }
     int port = sceAudioInAsyncOpen(user, 0, 0, 128, 48000, 2);
     float gain = 0.0f;
@@ -106,6 +110,20 @@ void TestValidation() {
     const int mic = sceAudioInOpen(user, 0, 0, 256, 48000, 0x10);
     Require(mic > 0 && sceAudioInIsPadEmbeddedMic(mic) == 0 && sceAudioInClose(mic) == 0);
     Require(sceAudioInIsPadEmbeddedMic(mic) == static_cast<int32_t>(0x80260101));
+    Require(sceAudioInExtOpen_nid_postfix(user, 2, 0, 256, 48000, 2) == invalidType);
+    Require(sceAudioInExtOpen_nid_postfix(user, 0, 1, 256, 48000, 2) == invalidParam);
+    Require(sceAudioInExtOpen_nid_postfix(user, 0, 0, 512, 48000, 2) == invalidSize);
+    Require(sceAudioInExtOpen_nid_postfix(user, 0, 0, 256, 44100, 2) == invalidFreq);
+    const int extPort = sceAudioInExtOpen_nid_postfix(user, 0, 0, 256, 48000, 2);
+    Require(extPort > 0);
+    Require(sceAudioInExtInput_nid_postfix(extPort, nullptr) == 0);
+    Require(ReportsNotImplemented("sceAudioInExtSetAecMode_nid_postfix", [extPort] {
+        sceAudioInExtSetAecMode_nid_postfix(extPort, 0);
+    }));
+    Require(sceAudioInExtClose_nid_postfix(extPort) == 0);
+    Require(sceAudioInExtClose_nid_postfix(extPort) == invalidHandle);
+    Require(sceAudioInExtInput_nid_postfix(extPort, nullptr) == invalidHandle);
+    Require(sceAudioInExtSetAecMode_nid_postfix(extPort, 0) == invalidHandle);
 }
 
 void InputSound(int handle, std::vector<std::int16_t>& block, int samples = 256) {
@@ -159,6 +177,7 @@ void TestNoDevice() {
     Require(handle > 0 && sceAudioInGetSilentState(handle) == 1);
     Require(sceAudioInGetSilentState(handle + 1) == invalidHandle);
     Require(sceAudioInInput(handle + 1, nullptr) == invalidHandle);
+    Require(sceAudioInExtInput_nid_postfix(handle + 1, nullptr) == invalidHandle);
     std::vector<std::uint8_t> buffer(256 * 8 + 1, 0xCC);
     const auto start = std::chrono::steady_clock::now();
     for (int block = 0; block < 5; ++block) Require(sceAudioInInput(handle, buffer.data()) == 256);
@@ -167,6 +186,7 @@ void TestNoDevice() {
     for (std::size_t i = 0; i < 256 * 8; ++i) Require(buffer[i] == 0);
     Require(buffer[256 * 8] == 0xCC);
     Require(sceAudioInInput(handle, nullptr) == 0);
+    Require(sceAudioInExtInput_nid_postfix(handle, nullptr) == 0);
     const int hq = sceAudioInHqOpen(user, 0, 0, 128, 48000, 2);
     const int async = sceAudioInAsyncOpen(user, 1, 0, 128, 48000, 0x11);
     Require(hq > 0 && async > 0 && hq != handle && async != handle && hq != async);

@@ -1,3 +1,4 @@
+#include "prx/libSceAudioIn/include/Api.hpp"
 #include "prx/libSceAudioIn/include/AudioIn.hpp"
 #include <cstdint>
 #include <cstddef>
@@ -367,4 +368,23 @@ int APS5_VABI sceAudioInInputs(void) {
     return 0;
 }
 
+int APS5_VABI sceAudioInExtOpen_nid_postfix(int userId, uint32_t type, uint32_t index, uint32_t len, uint32_t freq, uint32_t param) {
+    return sceAudioInOpen(userId, type, index, len, freq, param);
+}
+
+int32_t APS5_VABI sceAudioInExtClose_nid_postfix(int32_t handle) {
+    return sceAudioInClose(handle);
+}
+
+int APS5_VABI sceAudioInExtInput_nid_postfix(int handle, void* dest) {
+    return sceAudioInInput(handle, dest);
+}
+
+int32_t APS5_VABI sceAudioInExtSetAecMode_nid_postfix(int32_t handle, int32_t mode) {
+    (void)mode;
+    std::lock_guard lock(g_mutex);
+    if (!find(handle)) return AUDIO_IN_ERROR_INVALID_HANDLE;
+    NotImplemented_nid_no_patch(__func__);
+    return 0;
+}
 }
