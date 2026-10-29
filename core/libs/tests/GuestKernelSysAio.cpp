@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <array>
 #include <cstring>
 #include <filesystem>
 #include <limits>
@@ -61,6 +62,121 @@ GuestAiocb Request(int descriptor, void* buffer, std::uint64_t bytes, std::int64
 void Wait(GuestAiocb& request) {
     const GuestAiocb* list[] = {&request};
     Require(aio_suspend_nid_postfix(list, 1, nullptr) == 0);
+}
+
+void RetainedRequests(const std::string& path, bool replace) {
+    const std::string originalPath = path + ".original";
+    const std::string otherPath = path + ".other";
+    const int original = open_nid_postfix(originalPath.c_str(), ORdwr | OCreat, 0600);
+    const int other = open_nid_postfix(otherPath.c_str(), ORdwr | OCreat, 0600);
+    Require(original >= 0 && other >= 0);
+    Require(pwrite_nid_disambig1_nid_postfix(original, "ORIGINAL", 8, 0) == 8);
+    Require(pwrite_nid_disambig1_nid_postfix(other, "REPLACED", 8, 0) == 8);
+    AioHoldWorkerForTest_nid_no_patch(true);
+    char readBuffer[4] = {};
+    char writeBuffer[] = "DONE";
+    auto read = Request(original, readBuffer, 4);
+    auto write = Request(original, writeBuffer, 4, 4);
+    auto sync = Request(original, nullptr, 0);
+    Require(aio_read_nid_postfix(&read) == 0);
+    Require(aio_write_nid_postfix(&write) == 0);
+    Require(aio_fsync_nid_postfix(OSync, &sync) == 0);
+    Require(close_nid_postfix(original) == 0);
+    if (replace) Require(dup2_nid_postfix(other, original) == original);
+    AioHoldWorkerForTest_nid_no_patch(false);
+    Wait(read);
+    Wait(write);
+    Wait(sync);
+    Require(aio_return_nid_postfix(&read) == 4);
+    Require(aio_return_nid_postfix(&write) == 4);
+    Require(aio_return_nid_postfix(&sync) == 0);
+    Require(std::memcmp(readBuffer, "ORIG", 4) == 0);
+    const int reopened = open_nid_postfix(originalPath.c_str(), ORdonly, 0);
+    Require(reopened >= 0);
+    char data[8] = {};
+    Require(pread_nid_postfix(reopened, data, 8, 0) == 8);
+    Require(std::memcmp(data, "ORIGDONE", 8) == 0);
+    Require(pread_nid_postfix(other, data, 8, 0) == 8);
+    Require(std::memcmp(data, "REPLACED", 8) == 0);
+    if (replace) Require(close_nid_postfix(original) == 0);
+    Require(close_nid_postfix(other) == 0 && close_nid_postfix(reopened) == 0);
+    Require(std::filesystem::remove(originalPath));
+    Require(std::filesystem::remove(otherPath));
+}
+
+void ReleasedReferences(int file) {
+    const int baseline = dup_nid_postfix(file);
+    Require(baseline >= 0 && close_nid_postfix(baseline) == 0);
+    const auto probe = [&] {
+        const int descriptor = dup_nid_postfix(file);
+        Require(descriptor == baseline);
+        Require(close_nid_postfix(descriptor) == 0);
+    };
+    char buffer[4] = {};
+    for (int iteration = 0; iteration < 64; ++iteration) {
+        AioHoldWorkerForTest_nid_no_patch(true);
+        auto first = Request(file, buffer, 4);
+        auto second = Request(file, buffer, 4);
+        Require(aio_read_nid_postfix(&first) == 0 && aio_read_nid_postfix(&second) == 0);
+        Require(aio_cancel_nid_postfix(file, &first) == AioCanceled);
+        Require(aio_cancel_nid_postfix(file, nullptr) == AioCanceled);
+        Require(aio_return_nid_postfix(&first) == -1 && Error() == Ecanceled);
+        GuestAiocb* done = nullptr;
+        Require(aio_waitcomplete_nid_postfix(&done, nullptr) == -1 && Error() == Ecanceled && done == &second);
+        probe();
+        AioHoldWorkerForTest_nid_no_patch(false);
+        auto read = Request(file, buffer, 4);
+        Require(aio_read_nid_postfix(&read) == 0);
+        Wait(read);
+        Require(aio_return_nid_postfix(&read) == 4);
+        probe();
+        auto failed = Request(file, nullptr, 4);
+        Require(aio_read_nid_postfix(&failed) == 0);
+        Wait(failed);
+        Require(aio_waitcomplete_nid_postfix(&done, nullptr) == -1 && Error() == Efault && done == &failed);
+        probe();
+        auto negative = Request(file, buffer, 4, -1);
+        Require(aio_read_nid_postfix(&negative) == -1 && Error() == Einval);
+        probe();
+    }
+}
+
+void CancelReusedDescriptor(const std::string& path) {
+    const int file = open_nid_postfix(path.c_str(), ORdwr, 0);
+    const int replacement = open_nid_postfix(path.c_str(), ORdwr, 0);
+    Require(file >= 0 && replacement >= 0);
+    char buffer[4] = {};
+    AioHoldWorkerForTest_nid_no_patch(true);
+    auto read = Request(file, buffer, 4);
+    Require(aio_read_nid_postfix(&read) == 0);
+    Require(close_nid_postfix(file) == 0);
+    Require(aio_cancel_nid_postfix(file, &read) == -1 && Error() == Ebadf);
+    Require(dup2_nid_postfix(replacement, file) == file);
+    Require(aio_cancel_nid_postfix(file, &read) == AioCanceled);
+    Require(aio_return_nid_postfix(&read) == -1 && Error() == Ecanceled);
+    AioHoldWorkerForTest_nid_no_patch(false);
+    Require(close_nid_postfix(file) == 0 && close_nid_postfix(replacement) == 0);
+}
+
+void QueueLimit(int file) {
+    const int baseline = dup_nid_postfix(file);
+    Require(baseline >= 0 && close_nid_postfix(baseline) == 0);
+    AioHoldWorkerForTest_nid_no_patch(true);
+    char buffer[4] = {};
+    std::array<GuestAiocb, 256> requests{};
+    for (auto& request : requests) {
+        request = Request(file, buffer, 4);
+        Require(aio_read_nid_postfix(&request) == 0);
+    }
+    auto excess = Request(file, buffer, 4);
+    Require(aio_read_nid_postfix(&excess) == -1 && Error() == Eagain);
+    Require(aio_cancel_nid_postfix(file, nullptr) == AioCanceled);
+    for (auto& request : requests) {
+        Require(aio_return_nid_postfix(&request) == -1 && Error() == Ecanceled);
+    }
+    const int descriptor = dup_nid_postfix(file);
+    Require(descriptor == baseline && close_nid_postfix(descriptor) == 0);
+    AioHoldWorkerForTest_nid_no_patch(false);
 }
 
 void BeforeUse() {
@@ -193,6 +309,11 @@ int main() {
     Require(file >= 0 && readOnly >= 0);
     Validation(file, readOnly);
     ReadAndWrite(file);
+    RetainedRequests(path, false);
+    RetainedRequests(path, true);
+    ReleasedReferences(file);
+    CancelReusedDescriptor(path);
+    QueueLimit(file);
     Cancel(file);
     SyncOrder(file);
     Require(close_nid_postfix(readOnly) == 0 && close_nid_postfix(file) == 0);
