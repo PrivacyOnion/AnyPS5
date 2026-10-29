@@ -34,12 +34,26 @@ int offlineRequest(const char* func) {
 
 extern "C" {
 
-int APS5_VABI sceVoiceChatInitialize(void* param) { (void)param; return 0; }
-int APS5_VABI sceVoiceChatTerminate(void) { return 0; }
+int APS5_VABI sceVoiceChatInitialize(void* param) {
+    (void)param;
+    NotImplemented_nid_no_patch(__func__);
+    return 0;
+}
+int APS5_VABI sceVoiceChatTerminate(void) {
+    NotImplemented_nid_no_patch(__func__);
+    return 0;
+}
 int APS5_VABI sceVoiceChatRegisterHandlers(void* handlers, void* userArg) { (void)handlers; (void)userArg; return 0; }
 int APS5_VABI sceVoiceChatRegisterMicEventHandler(std::int32_t userId, void* handler, void* userArg) { (void)userId; (void)handler; (void)userArg; return 0; }
-int APS5_VABI sceVoiceChatProcessEvent(void) { return 0; }
-int APS5_VABI sceVoiceChatDeleteRequest(int requestId) { (void)requestId; return 0; }
+int APS5_VABI sceVoiceChatProcessEvent(void) {
+    NotImplemented_nid_no_patch(__func__);
+    return 0;
+}
+int APS5_VABI sceVoiceChatDeleteRequest(int requestId) {
+    (void)requestId;
+    NotImplemented_nid_no_patch(__func__);
+    return 0;
+}
 
 int APS5_VABI sceVoiceChatCreateRequest(void* a, void* b) {
     (void)a;

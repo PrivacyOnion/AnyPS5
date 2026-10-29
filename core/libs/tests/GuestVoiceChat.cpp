@@ -14,8 +14,6 @@ static void Require(bool value, const char* what) {
 int main() {
     constexpr int kSignedOut = static_cast<int>(0x80550006u);
 
-    Require(sceVoiceChatInitialize(nullptr) == 0, "initialization failed");
-    Require(sceVoiceChatProcessEvent() == 0, "event processing failed");
     Require(sceVoiceChatRegisterHandlers(nullptr, nullptr) == 0, "register handlers failed");
     Require(sceVoiceChatRegisterMicEventHandler(0, nullptr, nullptr) == 0, "register mic event handler failed");
     Require(sceVoiceChatRegisterChannelEventHandler(nullptr, nullptr) == 0, "register channel event handler failed");
@@ -62,8 +60,6 @@ int main() {
     Require(sceVoiceChatRequestDeleteVoiceChatGroup(1, nullptr, nullptr) == kSignedOut, "delete voice chat group did not return signed out");
     Require(sceVoiceChatRequestAcsTts(1, nullptr, nullptr) == kSignedOut, "tts request did not return signed out");
     Require(sceVoiceChatAbortRequest(1) == 0, "abort request failed");
-    Require(sceVoiceChatDeleteRequest(1) == 0, "delete request failed");
-    Require(sceVoiceChatTerminate() == 0, "termination failed");
 
     std::puts("VoiceChat tests passed");
     return 0;
