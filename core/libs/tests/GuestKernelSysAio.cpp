@@ -104,6 +104,99 @@ void RetainedRequests(const std::string& path, bool replace) {
     Require(std::filesystem::remove(otherPath));
 }
 
+void RetainedSlotDup2(const std::string& path) {
+    const std::string originalPath = path + ".probe-original";
+    const std::string replacementPath = path + ".probe-replacement";
+    const int original = open_nid_postfix(originalPath.c_str(), ORdwr | OCreat, 0600);
+    const int replacement = open_nid_postfix(replacementPath.c_str(), ORdwr | OCreat, 0600);
+    Require(original >= 0 && replacement >= 0);
+    Require(pwrite_nid_disambig1_nid_postfix(original, "ORIGINAL", 8, 0) == 8);
+    Require(pwrite_nid_disambig1_nid_postfix(replacement, "REPLACED", 8, 0) == 8);
+    const int probeSlot = dup_nid_postfix(original);
+    Require(probeSlot >= 0 && close_nid_postfix(probeSlot) == 0);
+    AioHoldWorkerForTest_nid_no_patch(true);
+    char writeBuffer[] = "DONE";
+    auto write = Request(original, writeBuffer, 4, 4);
+    Require(aio_write_nid_postfix(&write) == 0);
+    Require(dup2_nid_postfix(replacement, probeSlot) == probeSlot);
+    AioHoldWorkerForTest_nid_no_patch(false);
+    Wait(write);
+    Require(aio_return_nid_postfix(&write) == 4);
+    char data[8] = {};
+    Require(pread_nid_postfix(original, data, 8, 0) == 8);
+    Require(std::memcmp(data, "ORIGDONE", 8) == 0);
+    Require(pread_nid_postfix(replacement, data, 8, 0) == 8);
+    Require(std::memcmp(data, "REPLACED", 8) == 0);
+    Require(pread_nid_postfix(probeSlot, data, 8, 0) == 8);
+    Require(std::memcmp(data, "REPLACED", 8) == 0);
+    Require(close_nid_postfix(probeSlot) == 0);
+    Require(close_nid_postfix(original) == 0 && close_nid_postfix(replacement) == 0);
+    Require(std::filesystem::remove(originalPath));
+    Require(std::filesystem::remove(replacementPath));
+}
+
+void RetainedSlotCloseAndReuse(const std::string& path) {
+    const std::string originalPath = path + ".reuse-original";
+    const std::string reusedPath = path + ".reuse-other";
+    const int original = open_nid_postfix(originalPath.c_str(), ORdwr | OCreat, 0600);
+    const int seed = open_nid_postfix(reusedPath.c_str(), ORdwr | OCreat, 0600);
+    Require(original >= 0 && seed >= 0);
+    Require(pwrite_nid_disambig1_nid_postfix(original, "ORIGINAL", 8, 0) == 8);
+    Require(pwrite_nid_disambig1_nid_postfix(seed, "REUSEDFD", 8, 0) == 8);
+    Require(close_nid_postfix(seed) == 0);
+    const int probeSlot = dup_nid_postfix(original);
+    Require(probeSlot >= 0 && close_nid_postfix(probeSlot) == 0);
+    AioHoldWorkerForTest_nid_no_patch(true);
+    char readBuffer[4] = {};
+    char writeBuffer[] = "DONE";
+    auto read = Request(original, readBuffer, 4, 0);
+    auto write = Request(original, writeBuffer, 4, 4);
+    auto sync = Request(original, nullptr, 0);
+    Require(aio_read_nid_postfix(&read) == 0);
+    Require(aio_write_nid_postfix(&write) == 0);
+    Require(aio_fsync_nid_postfix(OSync, &sync) == 0);
+    Require(close_nid_postfix(probeSlot) == -1 && Error() == Ebadf);
+    char scratch[4] = {};
+    for (const int privateSlot : {4096, 4097, 4098}) {
+        Require(close_nid_postfix(privateSlot) == -1 && Error() == Ebadf);
+        Require(pread_nid_postfix(privateSlot, scratch, sizeof(scratch), 0) == -1 && Error() == Ebadf);
+        Require(pwrite_nid_disambig1_nid_postfix(privateSlot, scratch, sizeof(scratch), 0) == -1 && Error() == Ebadf);
+        Require(fsync_nid_postfix(privateSlot) == -1 && Error() == Ebadf);
+        Require(dup_nid_postfix(privateSlot) == -1 && Error() == Ebadf);
+        Require(dup2_nid_postfix(privateSlot, probeSlot) == -1 && Error() == Ebadf);
+    }
+    const int reused = open_nid_postfix(reusedPath.c_str(), ORdwr, 0);
+    Require(reused == probeSlot);
+    const int aboveProbe = fcntl_nid_postfix(reused, 0, probeSlot + 1);
+    Require(aboveProbe > probeSlot);
+    Require(dup2_nid_postfix(reused, 4096) == 4096);
+    Require(dup2_nid_postfix(reused, 4097) == 4097);
+    Require(close_nid_postfix(original) == 0);
+    Require(dup2_nid_postfix(reused, original) == original);
+    AioHoldWorkerForTest_nid_no_patch(false);
+    Wait(read);
+    Wait(write);
+    Wait(sync);
+    Require(aio_return_nid_postfix(&read) == 4);
+    Require(aio_return_nid_postfix(&write) == 4);
+    Require(aio_return_nid_postfix(&sync) == 0);
+    Require(std::memcmp(readBuffer, "ORIG", 4) == 0);
+    const int reopened = open_nid_postfix(originalPath.c_str(), ORdonly, 0);
+    Require(reopened >= 0);
+    char data[8] = {};
+    Require(pread_nid_postfix(reopened, data, 8, 0) == 8);
+    Require(std::memcmp(data, "ORIGDONE", 8) == 0);
+    Require(close_nid_postfix(reopened) == 0);
+    for (const int descriptor : {reused, aboveProbe, original, 4096, 4097}) {
+        std::memset(data, 0, sizeof(data));
+        Require(pread_nid_postfix(descriptor, data, 8, 0) == 8);
+        Require(std::memcmp(data, "REUSEDFD", 8) == 0);
+        Require(close_nid_postfix(descriptor) == 0);
+    }
+    Require(std::filesystem::remove(originalPath));
+    Require(std::filesystem::remove(reusedPath));
+}
+
 void ReleasedReferences(int file) {
     const int baseline = dup_nid_postfix(file);
     Require(baseline >= 0 && close_nid_postfix(baseline) == 0);
@@ -311,6 +404,8 @@ int main() {
     ReadAndWrite(file);
     RetainedRequests(path, false);
     RetainedRequests(path, true);
+    RetainedSlotDup2(path);
+    RetainedSlotCloseAndReuse(path);
     ReleasedReferences(file);
     CancelReusedDescriptor(path);
     QueueLimit(file);

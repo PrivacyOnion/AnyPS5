@@ -22,6 +22,8 @@ void ForgetSharedMemoryDescriptor_nid_no_patch(int descriptor);
 void DuplicateSharedMemoryDescriptor_nid_no_patch(int source, int destination);
 int CloseSharedMemoryDescriptor_nid_no_patch(int descriptor);
 int ReplaceSharedMemoryDescriptor_nid_no_patch(int source, int destination);
+std::int64_t PwriteSharedMemoryHandle_nid_no_patch(void* handle, bool writable, const void* buffer, std::size_t size, std::int64_t offset);
+void CloseSharedMemoryHandle_nid_no_patch(void* handle);
 #endif
 #ifndef _WIN32
 std::int64_t WritevSharedMemory_nid_no_patch(int descriptor, const struct iovec* vectors, int count);

@@ -17,6 +17,7 @@
 
 #include "SceTypes.hpp"
 #include "prx/libc/include/General.hpp"
+#include "prx/libkernel/File/include/RetainedFile.hpp"
 
 namespace {
 
@@ -58,26 +59,25 @@ static_assert(sizeof(GuestAiocb) == 160);
 
 enum class State { Queued, Running, Done };
 
-class OwnedDescriptor {
+class OwnedFile {
 public:
-    explicit OwnedDescriptor(int descriptor) : descriptor(dup_nid_postfix(descriptor)) {}
-    ~OwnedDescriptor() {
-        const int savedError = *__error_nid_postfix();
-        if (descriptor >= 0) close_nid_postfix(descriptor);
-        *__error_nid_postfix() = savedError;
+    OwnedFile(int descriptor, bool requireRead, bool requireWrite)
+        : retained(RetainOpenFile_nid_no_patch(descriptor, requireRead, requireWrite)) {}
+    ~OwnedFile() {
+        ReleaseRetainedOpenFile_nid_no_patch(retained);
     }
-    OwnedDescriptor(const OwnedDescriptor&) = delete;
-    OwnedDescriptor& operator=(const OwnedDescriptor&) = delete;
-    int Get() const { return descriptor; }
+    OwnedFile(const OwnedFile&) = delete;
+    OwnedFile& operator=(const OwnedFile&) = delete;
+    RetainedOpenFile* Get() const { return retained; }
 
 private:
-    int descriptor;
+    RetainedOpenFile* retained;
 };
 
 struct Job {
     GuestAiocb* user;
     int descriptor;
-    std::unique_ptr<OwnedDescriptor> file;
+    std::unique_ptr<OwnedFile> file;
     int opcode;
     std::int64_t offset;
     void* buffer;
@@ -110,11 +110,11 @@ int Fail(int error) {
 }
 
 void Run(Job& job) {
-    const int descriptor = job.file->Get();
+    RetainedOpenFile* file = job.file->Get();
     std::int64_t result = 0;
-    if (job.opcode == LioRead) result = job.bytes == 0 ? 0 : pread_nid_postfix(descriptor, job.buffer, job.bytes, job.offset);
-    else if (job.opcode == LioWrite) result = pwrite_nid_disambig1_nid_postfix(descriptor, job.buffer, job.bytes, job.offset);
-    else result = fsync_nid_postfix(descriptor);
+    if (job.opcode == LioRead) result = job.bytes == 0 ? 0 : ReadRetainedOpenFile_nid_no_patch(file, job.buffer, job.bytes, job.offset);
+    else if (job.opcode == LioWrite) result = WriteRetainedOpenFile_nid_no_patch(file, job.buffer, job.bytes, job.offset);
+    else result = SyncRetainedOpenFile_nid_no_patch(file);
     job.status = result < 0 ? -1 : result;
     job.error = result < 0 ? *__error_nid_postfix() : 0;
 }
@@ -186,24 +186,22 @@ int Queue(GuestAiocb* user, int opcode) {
     if (notify != SigevKevent && notify != SigevSignal && notify != SigevThreadId && notify != SigevNone) return fail(GuestEinval);
     if ((notify == SigevSignal || notify == SigevThreadId) && (request.sigevent.signo <= 0 || request.sigevent.signo > SignalMax))
         return Fail(GuestEinval);
-    auto file = std::make_unique<OwnedDescriptor>(request.fildes);
-    if (file->Get() < 0) return fail(*__error_nid_postfix());
-    const int flags = fcntl_nid_postfix(file->Get(), GetFlags);
+    const int flags = fcntl_nid_postfix(request.fildes, GetFlags);
     if (flags < 0) return fail(GuestEbadf);
     const int access = flags & AccessMode;
     if (opcode == LioRead && access != 0 && access != ReadWrite) return fail(GuestEbadf);
     if (opcode == LioWrite && access != WriteOnly && access != ReadWrite) return fail(GuestEbadf);
     FileStat status{};
-    if (_fstat_nid_postfix(file->Get(), &status) != 0) return fail(GuestEbadf);
+    if (_fstat_nid_postfix(request.fildes, &status) != 0) return fail(GuestEbadf);
     const auto type = static_cast<std::uint16_t>(status.st_mode & TypeMask);
     if (type == TypeSocket) NotImplemented_nid_no_patch("aio on a socket");
     const bool vnode = type != 0 && type != TypeFifo;
     if (opcode == LioSync && !vnode) return fail(GuestEinval);
     if (opcode != LioSync && request.offset < 0) return fail(GuestEinval);
-    user->kernelinfo = reinterpret_cast<void*>(aio.nextId++);
     if (notify != SigevNone) NotImplemented_nid_no_patch("aio completion delivering a signal or a kevent");
-    user->error = GuestEinprogress;
     if (type != TypeRegular && type != TypeDirectory) return fail(GuestEopnotsupp);
+    auto file = std::make_unique<OwnedFile>(request.fildes, opcode == LioRead, opcode == LioWrite);
+    if (file->Get() == nullptr) return fail(*__error_nid_postfix());
     auto job = std::make_shared<Job>(Job{user, request.fildes, std::move(file), opcode, request.offset, request.buf, request.nbytes});
     aio.all.push_back(job);
     try {
@@ -217,6 +215,8 @@ int Queue(GuestAiocb* user, int opcode) {
         aio.all.pop_back();
         throw;
     }
+    user->kernelinfo = reinterpret_cast<void*>(aio.nextId++);
+    user->error = GuestEinprogress;
     aio.changed.notify_all();
     return 0;
 }

@@ -9,6 +9,7 @@
 #include "prx/libc/include/AppArchive.hpp"
 #include "prx/libkernel/DirectMemory/DirectMemory.hpp"
 #include "prx/libkernel/File/include/File.hpp"
+#include "prx/libkernel/File/include/RetainedFile.hpp"
 #include "prx/libkernel/File/include/SharedMemory.hpp"
 #include "prx/libkernel/File/include/DirectoryDescriptor.hpp"
 #include "prx/libkernel/File/include/DescriptorControl.hpp"
@@ -147,20 +148,27 @@ static int MapFlags(int sceFlags) {
 #include <sys/stat.h>
 #endif
 static int NativeOpen(const std::filesystem::path& p, int nativeFlags, std::uint16_t mode) {
+    if (!File::EvacuatePrivateFrom_nid_no_patch(0)) return -1;
     return ::open(p.c_str(), nativeFlags, static_cast<mode_t>(mode));
 }
 static std::int64_t NativeLseek(int fd, std::int64_t offset, int whence) {
+    if (File::IsPrivateDescriptor_nid_no_patch(fd)) { errno = EBADF; return -1; }
     const auto result = File::SeekSharedMemory_nid_no_patch(fd, offset, whence);
     return result == -2 ? ::lseek(fd, static_cast<off_t>(offset), whence) : result;
 }
 static std::int64_t NativeRead(int fd, void* buf, std::size_t n) {
+    if (File::IsPrivateDescriptor_nid_no_patch(fd)) { errno = EBADF; return -1; }
     return ::read(fd, buf, n);
 }
 static std::int64_t NativeWrite(int fd, const void* buf, std::size_t n) {
+    if (File::IsPrivateDescriptor_nid_no_patch(fd)) { errno = EBADF; return -1; }
     const auto result = File::WriteSharedMemory_nid_no_patch(fd, buf, n);
     return result == -2 ? ::write(fd, buf, n) : result;
 }
-static int NativeClose(int fd) { return ::close(fd); }
+static int NativeClose(int fd) {
+    if (File::IsPrivateDescriptor_nid_no_patch(fd)) { errno = EBADF; return -1; }
+    return ::close(fd);
+}
 static int NativeUnlink(const std::filesystem::path& p) {
     return ::unlink(p.c_str());
 }
@@ -332,6 +340,7 @@ int OpenInDirectory_nid_no_patch(int directory, const char* path, int flags, std
 }
 
 int APS5_VABI sceKernelClose(int d) {
+    if (File::IsPrivateDescriptor_nid_no_patch(d)) return SCE_KERNEL_ERROR_EBADF;
     if (File::IsHostStream(d)) return SCE_KERNEL_ERROR_EPERM;
     int socketError = 0;
     if (KernelCloseSocket_nid_no_patch(d, &socketError)) return socketError == 0 ? 0 : SceKernelError(socketError);

@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
+#include <memory>
 #include <mutex>
 #include <optional>
 #ifdef __APPLE__
@@ -34,6 +35,7 @@ bool DescriptorIsOpen_nid_no_patch(int descriptor);
 namespace File {
 #ifdef _WIN32
 std::optional<std::filesystem::path> WindowsDescriptorPath_nid_no_patch(int descriptor);
+std::shared_ptr<std::mutex> PositionedTransferMutex_nid_no_patch(int descriptor);
 #endif
 int HostStandardError();
 [[nodiscard]] std::unique_lock<std::mutex> LockPositionedTransfer(int descriptor);

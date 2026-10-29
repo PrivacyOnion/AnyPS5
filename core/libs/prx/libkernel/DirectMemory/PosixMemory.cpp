@@ -7,6 +7,7 @@
 #include "prx/libc/include/GuestArena.hpp"
 #include "prx/libkernel/File/include/ArchivedFile.hpp"
 #include "prx/libkernel/File/include/DirectoryDescriptor.hpp"
+#include "prx/libkernel/File/include/RetainedFile.hpp"
 #include "prx/libkernel/File/include/SharedMemory.hpp"
 #include <algorithm>
 #include <limits>
@@ -187,7 +188,7 @@ void* APS5_VABI mmap_nid_postfix(void* address, std::size_t length, int protecti
         (kind != GuestShared && kind != GuestPrivate) ||
         (mappingFlags & ~(GuestShared | GuestPrivate | GuestMapFixed | GuestMapNoOverwrite | GuestMapNoCoalesce)) != 0)
         return failed(GuestNotSupported);
-    if (descriptor < 0) return failed(GuestBadDescriptor);
+    if (descriptor < 0 || File::IsPrivateDescriptor_nid_no_patch(descriptor)) return failed(GuestBadDescriptor);
     if (File::IsVirtualDirectoryDescriptor(descriptor)) return failed(GuestNotSupported);
     File::RefuseArchivedFile(descriptor, "mmap");
     if (offset < 0 || (static_cast<std::uint64_t>(offset) & (PS5_PAGE_SIZE - 1)) != 0 ||

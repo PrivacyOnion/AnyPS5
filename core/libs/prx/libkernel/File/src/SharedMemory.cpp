@@ -727,6 +727,47 @@ void DuplicateSharedMemoryDescriptor_nid_no_patch(int source, int destination) {
     const auto found = sharedDescriptorAccess.find(source);
     if (found != sharedDescriptorAccess.end()) sharedDescriptorAccess[destination] = found->second;
 }
+
+std::int64_t PwriteSharedMemoryHandle_nid_no_patch(void* rawHandle, bool writable, const void* buffer, std::size_t size, std::int64_t offset) {
+    const auto handle = static_cast<HANDLE>(rawHandle);
+    if (handle == nullptr || handle == INVALID_HANDLE_VALUE || ::GetFileType(handle) != FILE_TYPE_DISK) { errno = EBADF; return -1; }
+    WindowsNamedLock objectLock(handle);
+    if (objectLock.Error() != ERROR_SUCCESS) {
+        const int mapped = WindowsNamedError(objectLock.Error());
+        errno = mapped != 0 ? mapped : EIO;
+        return -1;
+    }
+    if (!writable) { errno = EBADF; return -1; }
+    if (offset < 0) { errno = EINVAL; return -1; }
+    LARGE_INTEGER fileSize{};
+    if (!::GetFileSizeEx(handle, &fileSize)) { errno = EIO; return -1; }
+    if (offset >= fileSize.QuadPart) return 0;
+    const auto count = std::min<std::uint64_t>(size, static_cast<std::uint64_t>(fileSize.QuadPart - offset));
+    LARGE_INTEGER previous{};
+    if (!::SetFilePointerEx(handle, LARGE_INTEGER{}, &previous, FILE_CURRENT)) { errno = EIO; return -1; }
+    OVERLAPPED overlapped{};
+    overlapped.Offset = static_cast<DWORD>(offset);
+    overlapped.OffsetHigh = static_cast<DWORD>(static_cast<std::uint64_t>(offset) >> 32u);
+    DWORD written = 0;
+    const BOOL succeeded = ::WriteFile(handle, buffer, static_cast<DWORD>(std::min<std::uint64_t>(count, std::numeric_limits<DWORD>::max())), &written, &overlapped);
+    const DWORD writeError = succeeded ? ERROR_SUCCESS : ::GetLastError();
+    if (!::SetFilePointerEx(handle, previous, nullptr, FILE_BEGIN)) throw std::runtime_error("pwrite: restoring the host file position failed");
+    if (!succeeded) { errno = writeError == ERROR_ACCESS_DENIED ? EBADF : EIO; return -1; }
+    return static_cast<std::int64_t>(written);
+}
+
+void CloseSharedMemoryHandle_nid_no_patch(void* rawHandle) {
+    const auto handle = static_cast<HANDLE>(rawHandle);
+    if (handle == nullptr || handle == INVALID_HANDLE_VALUE) return;
+    const int savedError = errno;
+    std::filesystem::path finalPath;
+    std::vector<wchar_t> path(32768);
+    const DWORD length = ::GetFinalPathNameByHandleW(handle, path.data(), static_cast<DWORD>(path.size()), FILE_NAME_NORMALIZED | VOLUME_NAME_DOS);
+    if (length > 4 && length < path.size()) finalPath = std::filesystem::path(std::wstring(path.data(), length));
+    ::CloseHandle(handle);
+    ReapSharedMemoryDescriptorPath(finalPath);
+    errno = savedError;
+}
 #endif
 
 namespace {

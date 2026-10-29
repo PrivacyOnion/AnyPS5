@@ -3,6 +3,7 @@
 #include "prx/libkernel/File/include/DescriptorControl.hpp"
 #include "prx/libkernel/File/include/DirectoryDescriptor.hpp"
 #include "prx/libkernel/File/include/File.hpp"
+#include "prx/libkernel/File/include/RetainedFile.hpp"
 #include "prx/libkernel/File/include/RandomDevice.hpp"
 #include "prx/libkernel/File/include/ArchivedFile.hpp"
 #include "prx/libkernel/Socket/include/SocketRuntime.hpp"
@@ -296,7 +297,7 @@ int ProcessRecordLock(int fd, Kind kind, int command, GuestLock& lock, void* poi
 }
 #else
 std::optional<Kind> Classify(int fd, const char* function) {
-    if (fd < 0) return std::nullopt;
+    if (fd < 0 || File::IsPrivateDescriptor_nid_no_patch(fd)) return std::nullopt;
     struct stat status{};
     if (::fstat(fd, &status) != 0) {
         if (errno == EBADF) return std::nullopt;
@@ -639,6 +640,16 @@ void SyncWrites(int fd) {
     ++g_synchronousWrites;
 }
 
+std::shared_ptr<int> DescriptorStatus_nid_no_patch(int fd) {
+    std::lock_guard lock(g_mutex);
+    return Materialize(fd).status;
+}
+
+void RecordSynchronousWrite_nid_no_patch() {
+    std::lock_guard lock(g_mutex);
+    ++g_synchronousWrites;
+}
+
 bool Appends(int fd) {
     std::lock_guard lock(g_mutex);
     const auto found = g_entries.find(fd);
@@ -646,7 +657,7 @@ bool Appends(int fd) {
 }
 
 bool IsCharacterDevice(int fd) {
-    if (fd < 0) return false;
+    if (fd < 0 || File::IsPrivateDescriptor_nid_no_patch(fd)) return false;
 #ifdef _WIN32
     return DescriptorIsOpen_nid_no_patch(fd) && !GuestSockets::IsOpen(fd) && !File::DirectoryDescriptorPath(fd) && ::GetFileType(WindowsDescriptorHandle_nid_no_patch(fd)) == FILE_TYPE_CHAR;
 #else
@@ -661,7 +672,7 @@ bool GrantsAccess(int fd, bool write) {
 }
 
 bool IsVnode(int fd) {
-    if (fd < 0 || File::IsRandomDevice(fd) || GuestSockets::IsOpen(fd)) return false;
+    if (fd < 0 || File::IsPrivateDescriptor_nid_no_patch(fd) || File::IsRandomDevice(fd) || GuestSockets::IsOpen(fd)) return false;
     if (File::IsArchivedFile(fd)) return true;
 #ifdef _WIN32
     if (!DescriptorIsOpen_nid_no_patch(fd)) return false;

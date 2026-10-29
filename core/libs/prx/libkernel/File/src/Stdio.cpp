@@ -11,6 +11,7 @@
 #include "prx/libc/include/GuestArena.hpp"
 #include "prx/libkernel/DirectMemory/DirectMemory.hpp"
 #include "prx/libkernel/File/include/File.hpp"
+#include "prx/libkernel/File/include/RetainedFile.hpp"
 #include "prx/libkernel/File/include/SharedMemory.hpp"
 #include "prx/libkernel/File/include/FileFlags.hpp"
 #include "prx/libkernel/File/include/NativeStat.hpp"
@@ -246,15 +247,14 @@ struct PositionedLock {
 };
 std::mutex g_positionedTableLock;
 std::unordered_map<int, std::shared_ptr<PositionedLock>> g_positionedLocks;
+std::shared_ptr<std::mutex> File::PositionedTransferMutex_nid_no_patch(int descriptor) {
+    std::lock_guard table(g_positionedTableLock);
+    auto& slot = g_positionedLocks[descriptor];
+    if (!slot) slot = std::make_shared<PositionedLock>();
+    return std::shared_ptr<std::mutex>(slot, &slot->mutex);
+}
 std::unique_lock<std::mutex> File::LockPositionedTransfer(int descriptor) {
-    std::shared_ptr<PositionedLock> entry;
-    {
-        std::lock_guard table(g_positionedTableLock);
-        auto& slot = g_positionedLocks[descriptor];
-        if (!slot) slot = std::make_shared<PositionedLock>();
-        entry = slot;
-    }
-    return std::unique_lock<std::mutex>(entry->mutex);
+    return std::unique_lock<std::mutex>(*File::PositionedTransferMutex_nid_no_patch(descriptor));
 }
 void File::SharePositionedTransfer(int from, int to) {
     std::lock_guard table(g_positionedTableLock);
@@ -387,9 +387,11 @@ static int NativeChmod(const std::filesystem::path& path, int mode) {
     return ::chmod(path.c_str(), static_cast<mode_t>(mode));
 }
 static int NativeFchmod(int descriptor, int mode) {
+    if (File::IsPrivateDescriptor_nid_no_patch(descriptor)) { errno = EBADF; return -1; }
     return ::fchmod(descriptor, static_cast<mode_t>(mode));
 }
 static int NativeFtruncate(int descriptor, std::int64_t length) {
+    if (File::IsPrivateDescriptor_nid_no_patch(descriptor)) { errno = EBADF; return -1; }
     const int result = File::TruncateSharedMemory_nid_no_patch(descriptor, length);
     return result == -2 ? ::ftruncate(descriptor, static_cast<off_t>(length)) : result;
 }
@@ -403,15 +405,18 @@ static int NativeUtimes(const std::filesystem::path& path, const KernelTimeval* 
     return followLink ? ::utimes(path.c_str(), values) : ::lutimes(path.c_str(), values);
 }
 static int NativeFutimes(int descriptor, const KernelTimeval* times) {
+    if (File::IsPrivateDescriptor_nid_no_patch(descriptor)) { errno = EBADF; return -1; }
     if (times == nullptr) return ::futimes(descriptor, nullptr);
     struct timeval values[2]{{static_cast<time_t>(times[0].tv_sec), static_cast<suseconds_t>(times[0].tv_usec)},
         {static_cast<time_t>(times[1].tv_sec), static_cast<suseconds_t>(times[1].tv_usec)}};
     return ::futimes(descriptor, values);
 }
 static int NativeFlock(int descriptor, int operation) {
+    if (File::IsPrivateDescriptor_nid_no_patch(descriptor)) { errno = EBADF; return -1; }
     return ::flock(descriptor, operation);
 }
 static std::int64_t NativePread(int descriptor, void* buf, std::size_t nbytes, std::int64_t offset) {
+    if (File::IsPrivateDescriptor_nid_no_patch(descriptor)) { errno = EBADF; return -1; }
     return static_cast<std::int64_t>(::pread(descriptor, buf, nbytes, static_cast<off_t>(offset)));
 }
 #ifdef __APPLE__
@@ -428,6 +433,7 @@ std::int64_t File::WritevAtEnd(int descriptor, const iovec* iov, int iovcnt) {
 }
 #endif
 static std::int64_t NativePwrite(int descriptor, const void* buf, std::size_t nbytes, std::int64_t offset) {
+    if (File::IsPrivateDescriptor_nid_no_patch(descriptor)) { errno = EBADF; return -1; }
     const auto result = File::PwriteSharedMemory_nid_no_patch(descriptor, buf, nbytes, offset);
     if (result != -2) return result;
 #ifdef __APPLE__
@@ -481,6 +487,7 @@ static bool IsPipeDescriptor(int descriptor) {
     const auto handle = reinterpret_cast<HANDLE>(WithoutParameterHandler([descriptor] { return ::_get_osfhandle(descriptor); }));
     return handle != INVALID_HANDLE_VALUE && ::GetFileType(handle) == FILE_TYPE_PIPE;
 #else
+    if (File::IsPrivateDescriptor_nid_no_patch(descriptor)) return false;
     struct stat status;
     return ::fstat(descriptor, &status) == 0 && S_ISFIFO(status.st_mode);
 #endif
@@ -606,6 +613,7 @@ static bool NativeIsPipe(int descriptor) {
 }
 
 static int NativeFstatfs(int descriptor, KernelStatfs* fs) {
+    if (File::IsPrivateDescriptor_nid_no_patch(descriptor)) return GUEST_EBADF;
     struct stat file{};
     if (::fstat(descriptor, &file) != 0) return SceErrorFromErrno(errno) & 0xffff;
     if (S_ISSOCK(file.st_mode) && (::fcntl(descriptor, F_GETFL) & O_PATH) == 0) return GUEST_EINVAL;
@@ -656,7 +664,7 @@ bool DescriptorIsOpen_nid_no_patch(int descriptor) {
 }
 #else
 bool DescriptorIsOpen_nid_no_patch(int descriptor) {
-    return descriptor >= 0 && ::fcntl(descriptor, F_GETFD) >= 0;
+    return descriptor >= 0 && !File::IsPrivateDescriptor_nid_no_patch(descriptor) && ::fcntl(descriptor, F_GETFD) >= 0;
 }
 #endif
 
@@ -684,6 +692,7 @@ int File::DuplicateFrom(int fd, int start) {
     for (const int descriptor : below) close_nid_postfix(descriptor);
     return duplicate < 0 ? PosixFailure(error) : duplicate;
 #else
+    if (!File::EvacuatePrivateFrom_nid_no_patch(start)) return PosixFailure(SceErrorFromErrno(errno) & 0xffff);
     const int duplicate = ::fcntl(fd, F_DUPFD, start);
     if (duplicate < 0) return PosixFailure(SceErrorFromErrno(errno) & 0xffff);
     File::DuplicateDirectoryDescriptor(fd, duplicate);
@@ -794,6 +803,7 @@ int APS5_VABI nmount_nid_postfix(const KernelIovec* iov, unsigned int niov, int 
 }
 
 int APS5_VABI close_nid_postfix(int d) {
+    if (File::IsPrivateDescriptor_nid_no_patch(d)) return PosixFailure(GUEST_EBADF);
     if (File::IsHostStream(d)) return PosixFailure(GUEST_EPERM);
     int socketError = 0;
     if (KernelCloseSocket_nid_no_patch(d, &socketError)) {
@@ -849,13 +859,15 @@ extern "C" {
 
 int APS5_VABI dup_nid_postfix(int d) {
     if (GuestSockets::IsOpen(d)) return GuestSockets::Duplicate(d);
-    if (d < 0) return PosixFailure(GUEST_EBADF);
+    if (d < 0 || File::IsPrivateDescriptor_nid_no_patch(d)) return PosixFailure(GUEST_EBADF);
     if (IsKqueueDescriptor_nid_no_patch(d)) throw std::runtime_error(std::string(__func__) + ": duplicating a kqueue descriptor is not supported");
     if (IsKsemDescriptor(d)) throw std::runtime_error(std::string(__func__) + ": duplicating a ksem id is not supported");
 #ifdef _WIN32
     const int duplicate = WithoutParameterHandler([d] { return ::_dup(d); });
     if (duplicate >= 0) File::DuplicateSharedMemoryDescriptor_nid_no_patch(d, duplicate);
 #else
+    if (::fcntl(d, F_GETFL) < 0) return PosixFailure(SceErrorFromErrno(errno) & 0xffff);
+    if (!File::EvacuatePrivateFrom_nid_no_patch(0)) return PosixFailure(SceErrorFromErrno(errno) & 0xffff);
     const int duplicate = ::dup(d);
 #endif
     if (duplicate < 0) return PosixFailure(SceErrorFromErrno(errno) & 0xffff);
@@ -867,10 +879,12 @@ int APS5_VABI dup_nid_postfix(int d) {
 }
 
 int APS5_VABI dup2_nid_postfix(int from, int to) {
-    if (from < 0 || to < 0) return PosixFailure(GUEST_EBADF);
+    if (from < 0 || to < 0 || File::IsPrivateDescriptor_nid_no_patch(from)) return PosixFailure(GUEST_EBADF);
     if (GuestSockets::IsOpen(from)) {
         if (from != to && to <= 2)
             throw std::runtime_error(std::string(__func__) + ": moving a guest socket onto standard descriptor " + std::to_string(to) + " is not supported");
+        if (from != to && !File::EvacuatePrivateDescriptor_nid_no_patch(to))
+            return PosixFailure(SceErrorFromErrno(errno) & 0xffff);
         if (GuestSockets::DuplicateTo(from, to) < 0) return -1;
         if (from == to) return to;
         File::ForgetRandomDevice(to);
@@ -909,12 +923,11 @@ int APS5_VABI dup2_nid_postfix(int from, int to) {
     DuplicateJitSharedMemory(from, to);
     return to;
 #else
-    if (from == to) {
-        if (::fcntl(from, F_GETFL) < 0) return PosixFailure(GUEST_EBADF);
-        return to;
-    }
+    if (::fcntl(from, F_GETFL) < 0) return PosixFailure(GUEST_EBADF);
+    if (from == to) return to;
     if (to == 1) PreserveHostStandardOutput();
     if (to == 2) PreserveHostStandardError();
+    if (!File::EvacuatePrivateDescriptor_nid_no_patch(to)) return PosixFailure(SceErrorFromErrno(errno) & 0xffff);
     const int result = ::dup2(from, to);
     if (result < 0) return PosixFailure(SceErrorFromErrno(errno) & 0xffff);
     File::ForgetDirectoryDescriptor(to);
@@ -938,6 +951,7 @@ int APS5_VABI flock_nid_postfix(int d, int operation) {
     if (handle == INVALID_HANDLE_VALUE) return PosixFailure(GUEST_EBADF);
     if (::GetFileType(handle) == FILE_TYPE_PIPE) return PosixFailure(GUEST_EOPNOTSUPP);
 #else
+    if (File::IsPrivateDescriptor_nid_no_patch(d)) return PosixFailure(GUEST_EBADF);
     struct stat status;
     if (::fstat(d, &status) != 0) return PosixFailure(GUEST_EBADF);
     if (S_ISFIFO(status.st_mode)) return PosixFailure(GUEST_EOPNOTSUPP);
@@ -1188,6 +1202,7 @@ int APS5_VABI sceKernelFstat(int d, FileStat* sb) {
 }
 
 int APS5_VABI sceKernelFsync(int fd) {
+    if (File::IsPrivateDescriptor_nid_no_patch(fd)) return SceErrorFromErrno(GUEST_EBADF);
     if (File::IsVirtualDirectoryDescriptor(fd)) return SceErrorFromErrno(GUEST_EISDIR);
     if (GuestSockets::IsOpen(fd)) return SceErrorFromErrno(GUEST_EINVAL);
     File::RefuseArchivedFile(fd, "fsync");
@@ -1200,6 +1215,7 @@ int APS5_VABI sceKernelFsync(int fd) {
 }
 
 int APS5_VABI sceKernelFdatasync(int fd) {
+    if (File::IsPrivateDescriptor_nid_no_patch(fd)) return SceErrorFromErrno(GUEST_EBADF);
     if (File::IsVirtualDirectoryDescriptor(fd)) return SceErrorFromErrno(GUEST_EISDIR);
     if (GuestSockets::IsOpen(fd)) return SceErrorFromErrno(GUEST_EINVAL);
     File::RefuseArchivedFile(fd, "fdatasync");
@@ -1285,6 +1301,7 @@ int APS5_VABI sceKernelGetdirentries(int fd, char* buf, int nbytes, int64_t* bas
     if (File::IsDirectoryDescriptor(fd)) {
         return File::ReadDirectoryDescriptor(fd, buf, nbytes, basep);
     }
+    if (File::IsPrivateDescriptor_nid_no_patch(fd)) return SceErrorFromErrno(GUEST_EBADF);
     struct stat status{};
     if (::fstat(fd, &status) != 0) return SceErrorFromErrno(errno);
     if (!S_ISDIR(status.st_mode)) return SceErrorFromErrno(GUEST_EINVAL);
@@ -1568,6 +1585,7 @@ int64_t APS5_VABI sceKernelReadv(int d, const KernelIovec* guestIov, int iovcnt)
     }
     if (File::IsRandomDevice(d)) return ReadRandomIovecs(d, iov, iovcnt);
     if (const auto archived = File::ReadArchivedIovecs(d, iov, iovcnt, nullptr)) return *archived;
+    if (File::IsPrivateDescriptor_nid_no_patch(d)) return SceErrorFromErrno(GUEST_EBADF);
     const auto result = static_cast<std::int64_t>(::readv(d, NativeIovecs(iov), iovcnt));
     return result < 0 ? SceErrorFromErrno(errno) : result;
 }
@@ -1581,6 +1599,7 @@ int64_t APS5_VABI sceKernelWritev(int d, const KernelIovec* guestIov, int iovcnt
         const auto result = GuestSockets::Writev(d, reinterpret_cast<const GuestSockets::Iovec*>(iov), iovcnt);
         return result < 0 ? SceKernelError(*__error_nid_postfix()) : result;
     }
+    if (File::IsPrivateDescriptor_nid_no_patch(d)) return SceErrorFromErrno(GUEST_EBADF);
     const File::WriteSync sync(d);
     PrepareWriteIovecs(iov, iovcnt);
     const auto sharedResult = File::WritevSharedMemory_nid_no_patch(d, NativeIovecs(iov), iovcnt);
@@ -1600,6 +1619,7 @@ int64_t APS5_VABI sceKernelPreadv(int d, const KernelIovec* guestIov, int iovcnt
     if (!OpenIovecs(iov, iovcnt, destinations)) return SceErrorFromErrno(GUEST_EFAULT);
     if (File::IsRandomDevice(d)) return ReadRandomIovecs(d, iov, iovcnt);
     if (const auto archived = File::ReadArchivedIovecs(d, iov, iovcnt, &offset)) return *archived;
+    if (File::IsPrivateDescriptor_nid_no_patch(d)) return SceErrorFromErrno(GUEST_EBADF);
     const auto result = static_cast<std::int64_t>(::preadv(d, NativeIovecs(iov), iovcnt, static_cast<off_t>(offset)));
     return result < 0 ? SceErrorFromErrno(errno) : result;
 }
@@ -1611,6 +1631,7 @@ int64_t APS5_VABI sceKernelPwritev(int d, const KernelIovec* guestIov, int iovcn
     const auto* iov = vectors.data();
     if (const int error = PositionedArgumentError(d, true, false, offset)) return SceErrorFromErrno(error);
     if (const auto error = PositionedGuestSocketError(d); error != 0) return error;
+    if (File::IsPrivateDescriptor_nid_no_patch(d)) return SceErrorFromErrno(GUEST_EBADF);
     const File::WriteSync sync(d);
     PrepareWriteIovecs(iov, iovcnt);
     const auto sharedResult = File::PwritevSharedMemory_nid_no_patch(d, NativeIovecs(iov), iovcnt, offset);

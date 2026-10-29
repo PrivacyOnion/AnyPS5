@@ -8,6 +8,7 @@
 #include "prx/libkernel/Equeue/Equeue.hpp"
 #include "prx/libkernel/File/include/DescriptorControl.hpp"
 #include "prx/libkernel/File/include/File.hpp"
+#include "prx/libkernel/File/include/RetainedFile.hpp"
 #include "prx/libkernel/File/include/RandomDevice.hpp"
 #include "prx/libkernel/Socket/include/SocketPoll.hpp"
 #include "prx/libkernel/Socket/include/SocketSelectDeadline.hpp"
@@ -106,6 +107,7 @@ short KernelEventFlags(short revents) {
 int HostPoll(KernelSocketPoll::Entry* descriptors, int count, int timeoutMilliseconds) {
     std::vector<struct pollfd> native(static_cast<std::size_t>(count));
     for (std::size_t index = 0; index < native.size(); ++index) {
+        if (File::IsPrivateDescriptor_nid_no_patch(descriptors[index].descriptor)) return -EBADF;
         native[index].fd = descriptors[index].descriptor;
         native[index].events = HostEventFlags(descriptors[index].events);
         native[index].revents = 0;

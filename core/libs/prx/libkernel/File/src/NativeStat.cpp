@@ -1,6 +1,7 @@
 #include "prx/libkernel/File/include/NativeStat.hpp"
 #include "prx/libkernel/File/include/ArchivedFile.hpp"
 #include "prx/libkernel/File/include/DirectoryDescriptor.hpp"
+#include "prx/libkernel/File/include/RetainedFile.hpp"
 #include "prx/libc/include/General.hpp"
 
 #include <algorithm>
@@ -80,6 +81,10 @@ static int DoStat(const std::filesystem::path& p, NativeStat* st) {
     return ::stat(p.c_str(), st);
 }
 static int DoFstat(int fd, NativeStat* st) {
+    if (File::IsPrivateDescriptor_nid_no_patch(fd)) {
+        errno = EBADF;
+        return -1;
+    }
     return ::fstat(fd, st);
 }
 static int DoLstat(const std::filesystem::path& p, NativeStat* st) {
