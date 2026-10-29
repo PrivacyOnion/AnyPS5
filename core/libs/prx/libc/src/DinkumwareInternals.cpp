@@ -1,3 +1,8 @@
+/*
+ * Copyright (c) by P.J. Plauger. All rights reserved.
+ * Consult your license regarding permissions and restrictions.
+ */
+
 #include "prx/libc/include/Api.hpp"
 #include <algorithm>
 #include <cctype>
