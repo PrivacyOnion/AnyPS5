@@ -323,3 +323,18 @@ if(BUILD_TESTING)
             "PATH=path_list_prepend:$<TARGET_FILE_DIR:libSceLibreSsl>")
     endif()
 endif()
+
+
+target_sources(libSceLibreSsl PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src/OcspResponseOwnership.cpp)
+if(BUILD_TESTING)
+    add_test_executable(guest_libressl_ocsp_response_ownership_tests ${CMAKE_CURRENT_SOURCE_DIR}/tests/OcspResponseOwnership.cpp)
+    target_include_directories(guest_libressl_ocsp_response_ownership_tests PRIVATE ${LIBS_INCLUDE_DIR})
+    target_link_libraries(guest_libressl_ocsp_response_ownership_tests PRIVATE libSceLibreSsl libc)
+    configure_windows_unwind(guest_libressl_ocsp_response_ownership_tests)
+    add_test(NAME guest_libressl_ocsp_response_ownership COMMAND guest_libressl_ocsp_response_ownership_tests)
+    set_tests_properties(guest_libressl_ocsp_response_ownership PROPERTIES TIMEOUT 20)
+    if(WIN32)
+        set_tests_properties(guest_libressl_ocsp_response_ownership PROPERTIES ENVIRONMENT_MODIFICATION
+            "PATH=path_list_prepend:$<TARGET_FILE_DIR:libSceLibreSsl>")
+    endif()
+endif()

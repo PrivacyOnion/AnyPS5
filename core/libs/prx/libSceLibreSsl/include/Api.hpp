@@ -1,6 +1,7 @@
 #pragma once
 
 #include "SceTypes.hpp"
+#include "prx/libSceLibreSsl/include/OcspResponseOwnership.hpp"
 
 struct Asn1String {
     std::int32_t length;
@@ -410,7 +411,6 @@ int APS5_VABI OBJ_nid2sn_nid_postfix(void);
 int APS5_VABI OBJ_obj2nid_nid_postfix(void);
 int APS5_VABI OBJ_sn2nid_nid_postfix(void);
 int APS5_VABI OCSP_BASICRESP_free_nid_postfix(void);
-int APS5_VABI OCSP_RESPONSE_free_nid_postfix(void);
 int APS5_VABI OCSP_basic_add1_cert_nid_postfix(void);
 int APS5_VABI OCSP_basic_verify_nid_postfix(void);
 const char* APS5_VABI OCSP_cert_status_str_nid_postfix(std::int64_t status);
