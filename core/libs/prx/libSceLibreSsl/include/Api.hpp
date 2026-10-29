@@ -1,6 +1,7 @@
 #pragma once
 
 #include "SceTypes.hpp"
+#include "prx/libSceLibreSsl/include/RetainedEcKey.hpp"
 
 struct Asn1String {
     std::int32_t length;
@@ -336,7 +337,6 @@ int APS5_VABI EVP_MD_CTX_init_nid_postfix(void);
 int APS5_VABI EVP_MD_size_nid_postfix(void);
 int APS5_VABI EVP_PKEY_copy_parameters_nid_postfix(void);
 int APS5_VABI EVP_PKEY_free_nid_postfix(void);
-int APS5_VABI EVP_PKEY_get1_EC_KEY_nid_postfix(void);
 int APS5_VABI EVP_PKEY_get1_RSA_nid_postfix(void);
 int APS5_VABI EVP_PKEY_id_nid_postfix(void);
 int APS5_VABI EVP_PKEY_new_nid_postfix(void);
