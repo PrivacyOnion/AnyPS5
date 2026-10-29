@@ -148,6 +148,7 @@ static int MapFlags(int sceFlags) {
 #include <sys/stat.h>
 #endif
 static int NativeOpen(const std::filesystem::path& p, int nativeFlags, std::uint16_t mode) {
+    auto ownership = File::LockDescriptorOwnership_nid_no_patch();
     if (!File::EvacuatePrivateFrom_nid_no_patch(0)) return -1;
     return ::open(p.c_str(), nativeFlags, static_cast<mode_t>(mode));
 }

@@ -3,6 +3,7 @@
 
 #include <cstdint>
 #include <exception>
+#include <atomic>
 #include <memory>
 
 namespace File {
@@ -20,7 +21,7 @@ void ShareDescriptor(int from, int to);
 void ForgetDescriptor(int fd);
 bool Appends(int fd);
 void SyncWrites(int fd);
-std::shared_ptr<int> DescriptorStatus_nid_no_patch(int fd);
+std::shared_ptr<std::atomic<int>> DescriptorStatus_nid_no_patch(int fd);
 void RecordSynchronousWrite_nid_no_patch();
 
 class WriteSync {

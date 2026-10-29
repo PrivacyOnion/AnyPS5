@@ -12,6 +12,7 @@
 #include "prx/libc/include/general/VabiMacros.hpp"
 
 #include <algorithm>
+#include <atomic>
 #include <cerrno>
 #include <cstddef>
 #include <cstdio>
@@ -117,7 +118,7 @@ enum class Kind { File, Directory, Pipe, Socket, Device, RandomDevice, ArchivedF
 
 struct Entry {
     bool closeOnExec = false;
-    std::shared_ptr<int> status;
+    std::shared_ptr<std::atomic<int>> status;
     bool pipe = false;
 };
 
@@ -153,7 +154,9 @@ std::optional<Kind> Classify(int fd, const char* function) {
     if (File::IsDirectoryDescriptor(fd)) return Kind::Directory;
     if (File::IsRandomDevice(fd)) return Kind::RandomDevice;
     if (File::IsArchivedFile(fd)) return Kind::ArchivedFile;
-    switch (::GetFileType(WindowsDescriptorHandle_nid_no_patch(fd))) {
+    const HANDLE handle = WindowsDescriptorHandle_nid_no_patch(fd);
+    if (handle == INVALID_HANDLE_VALUE) return std::nullopt;
+    switch (::GetFileType(handle)) {
         case FILE_TYPE_DISK: return Kind::File;
         case FILE_TYPE_PIPE: return Kind::Pipe;
         case FILE_TYPE_CHAR: return Kind::Device;
@@ -182,7 +185,7 @@ void SetPipeNonblocking(int fd, bool nonblocking, const char* function) {
 Entry InitialEntry(int fd) {
     int status = 0;
     if (::GetFileType(WindowsDescriptorHandle_nid_no_patch(fd)) == FILE_TYPE_PIPE && (PipeState(fd, "fcntl") & PIPE_NOWAIT) != 0) status |= Nonblocking;
-    return {false, std::make_shared<int>(status)};
+    return {false, std::make_shared<std::atomic<int>>(status)};
 }
 
 void SetHostAppend(int fd, bool append, const char* function) {
@@ -335,7 +338,7 @@ Entry InitialEntry(int fd) {
 #ifdef O_DIRECT
     if (host & O_DIRECT) status |= Direct;
 #endif
-    return {(descriptorFlags & FD_CLOEXEC) != 0, std::make_shared<int>(status)};
+    return {(descriptorFlags & FD_CLOEXEC) != 0, std::make_shared<std::atomic<int>>(status)};
 }
 
 void ApplyHostStatus(int fd, Kind, int changed, int next, const char* function) {
@@ -385,17 +388,18 @@ Entry& Materialize(int fd) {
 int ChangeStatus(int fd, Kind kind, int mask, int value, const char* function) {
     std::lock_guard lock(g_mutex);
     auto& status = *Materialize(fd).status;
-    const int next = (status & ~mask) | (value & mask);
-    const int changed = status ^ next;
+    const int current = status.load(std::memory_order_relaxed);
+    const int next = (current & ~mask) | (value & mask);
+    const int changed = current ^ next;
     if ((changed & Asynchronous) && (kind == Kind::Pipe || kind == Kind::Socket || kind == Kind::Device)) Unsupported(function, "O_ASYNC", kind, fd);
     ApplyHostStatus(fd, kind, changed, next, function);
-    status = next;
+    status.store(next, std::memory_order_release);
     return 0;
 }
 
 int CurrentStatus(int fd) {
     std::lock_guard lock(g_mutex);
-    return *Materialize(fd).status;
+    return Materialize(fd).status->load(std::memory_order_relaxed);
 }
 
 bool CreatedByPipe(int fd) {
@@ -463,8 +467,8 @@ int ReadAheadControl(int fd, int command, std::intptr_t argument) {
     if (*kind != Kind::File && *kind != Kind::ArchivedFile) return Fail(GuestEnotty);
     std::lock_guard lock(g_mutex);
     auto& status = *Materialize(fd).status;
-    if (command == DarwinReadAhead || argument >= 0) status |= ReadAheadFlag;
-    else status &= ~ReadAheadFlag;
+    if (command == DarwinReadAhead || argument >= 0) status.store(status.load(std::memory_order_relaxed) | ReadAheadFlag, std::memory_order_release);
+    else status.store(status.load(std::memory_order_relaxed) & ~ReadAheadFlag, std::memory_order_release);
     return 0;
 }
 
@@ -498,6 +502,7 @@ FcntlArgument FcntlArgumentOf(int command) {
 }
 
 int Fcntl(int fd, int command, std::intptr_t argument) {
+    auto ownership = LockDescriptorOwnership_nid_no_patch();
     switch (command) {
         case DuplicateCommand: {
             if (fd < 0) return Fail(GuestEbadf);
@@ -564,6 +569,7 @@ bool IoctlRequestMalformed(std::uint64_t request) {
 }
 
 int Ioctl(int fd, std::uint64_t request, void* argument) {
+    auto ownership = LockDescriptorOwnership_nid_no_patch();
     if (IoctlRequestMalformed(request)) return Fail(GuestEnotty);
     if (File::IsVirtualDirectoryDescriptor(fd)) return Fail(GuestEinval);
     const auto command = static_cast<std::uint32_t>(request);
@@ -596,7 +602,7 @@ int Ioctl(int fd, std::uint64_t request, void* argument) {
 
 void RememberDescriptor(int fd, int openFlags) {
     std::lock_guard lock(g_mutex);
-    g_entries[fd] = Entry{(openFlags & OpenCloseOnExec) != 0, std::make_shared<int>(openFlags & OpenStatusFlags)};
+    g_entries[fd] = Entry{(openFlags & OpenCloseOnExec) != 0, std::make_shared<std::atomic<int>>(openFlags & OpenStatusFlags)};
 #ifdef _WIN32
     GuestFileLockForget_nid_no_patch(fd);
 #endif
@@ -631,7 +637,7 @@ void SyncWrites(int fd) {
     {
         std::lock_guard lock(g_mutex);
         const auto found = g_entries.find(fd);
-        if (found == g_entries.end() || !found->second.status || (*found->second.status & Synchronous) == 0) return;
+        if (found == g_entries.end() || !found->second.status || (found->second.status->load(std::memory_order_acquire) & Synchronous) == 0) return;
     }
     if (Classify(fd, "write") != Kind::File) return;
     if (const int result = sceKernelFsync(fd); result != 0)
@@ -640,7 +646,7 @@ void SyncWrites(int fd) {
     ++g_synchronousWrites;
 }
 
-std::shared_ptr<int> DescriptorStatus_nid_no_patch(int fd) {
+std::shared_ptr<std::atomic<int>> DescriptorStatus_nid_no_patch(int fd) {
     std::lock_guard lock(g_mutex);
     return Materialize(fd).status;
 }
@@ -653,7 +659,7 @@ void RecordSynchronousWrite_nid_no_patch() {
 bool Appends(int fd) {
     std::lock_guard lock(g_mutex);
     const auto found = g_entries.find(fd);
-    return found != g_entries.end() && found->second.status && (*found->second.status & Append) != 0;
+    return found != g_entries.end() && found->second.status && (found->second.status->load(std::memory_order_acquire) & Append) != 0;
 }
 
 bool IsCharacterDevice(int fd) {

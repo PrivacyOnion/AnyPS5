@@ -8,6 +8,8 @@
 #include <cstdio>
 #include <cstdlib>
 #include <array>
+#include <atomic>
+#include <thread>
 #include <cstring>
 #include <filesystem>
 #include <limits>
@@ -21,6 +23,8 @@ namespace {
 extern "C" {
 
 void AioHoldWorkerForTest_nid_no_patch(bool hold);
+void RetainedFileSetBoundaryHookForTest_nid_no_patch(void (*hook)(int stage, int descriptor));
+std::uint64_t FileSynchronousWritesForTest_nid_no_patch();
 }
 
 namespace {
@@ -35,7 +39,10 @@ constexpr int Ecanceled = 85;
 constexpr int ORdonly = 0;
 constexpr int ORdwr = 2;
 constexpr int OCreat = 0x200;
+constexpr int OAppend = 0x0008;
 constexpr int OSync = 0x80;
+constexpr int FSetfl = 4;
+constexpr int FGetfl = 3;
 constexpr int ODsync = 0x1000000;
 constexpr int AioCanceled = 1;
 constexpr int AioAllDone = 3;
@@ -392,6 +399,200 @@ void SyncOrder(int file) {
     Require(aio_waitcomplete_nid_postfix(&done, &badTime) == -1 && Error() == Einval);
 }
 
+std::atomic<int> s_boundaryStage{-1};
+std::atomic<int> s_boundaryDescriptor{-1};
+std::atomic<bool> s_boundaryReached{false};
+std::atomic<bool> s_mutationAttempted{false};
+std::atomic<bool> s_mutationFinished{false};
+std::atomic<bool> s_aioAttempted{false};
+std::atomic<bool> s_aioFinished{false};
+
+void BoundaryAllocationHook(int stage, int descriptor) {
+    if (stage != 0) return;
+    s_boundaryStage.store(stage, std::memory_order_release);
+    s_boundaryDescriptor.store(descriptor, std::memory_order_release);
+    s_boundaryReached.store(true, std::memory_order_release);
+    while (!s_mutationAttempted.load(std::memory_order_acquire)) {
+        std::this_thread::yield();
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    Require(!s_mutationFinished.load(std::memory_order_acquire));
+}
+
+void BoundaryEvacuationHook(int stage, int descriptor) {
+    if (stage != 1) return;
+    s_boundaryStage.store(stage, std::memory_order_release);
+    s_boundaryDescriptor.store(descriptor, std::memory_order_release);
+    s_boundaryReached.store(true, std::memory_order_release);
+    while (!s_aioAttempted.load(std::memory_order_acquire)) {
+        std::this_thread::yield();
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    Require(!s_aioFinished.load(std::memory_order_acquire));
+}
+
+void RetainedBoundaryAllocationRace(const std::string& path) {
+    const std::string originalPath = path + ".bound-alloc-orig";
+    const std::string replacementPath = path + ".bound-alloc-repl";
+    const int original = open_nid_postfix(originalPath.c_str(), ORdwr | OCreat, 0600);
+    const int replacement = open_nid_postfix(replacementPath.c_str(), ORdwr | OCreat, 0600);
+    Require(original >= 0 && replacement >= 0);
+    Require(pwrite_nid_disambig1_nid_postfix(original, "ORIGINAL", 8, 0) == 8);
+    Require(pwrite_nid_disambig1_nid_postfix(replacement, "REPLACED", 8, 0) == 8);
+
+    const int probeSlot = dup_nid_postfix(original);
+    Require(probeSlot >= 0 && close_nid_postfix(probeSlot) == 0);
+
+    s_boundaryStage.store(-1, std::memory_order_release);
+    s_boundaryDescriptor.store(-1, std::memory_order_release);
+    s_boundaryReached.store(false, std::memory_order_release);
+    s_mutationAttempted.store(false, std::memory_order_release);
+    s_mutationFinished.store(false, std::memory_order_release);
+    RetainedFileSetBoundaryHookForTest_nid_no_patch(BoundaryAllocationHook);
+
+    AioHoldWorkerForTest_nid_no_patch(true);
+    char writeData[] = "DONE";
+    auto write = Request(original, writeData, 4, 4);
+
+    std::thread mutator([&] {
+        while (!s_boundaryReached.load(std::memory_order_acquire)) {
+            std::this_thread::yield();
+        }
+        s_mutationAttempted.store(true, std::memory_order_release);
+        Require(dup2_nid_postfix(replacement, probeSlot) == probeSlot);
+        s_mutationFinished.store(true, std::memory_order_release);
+    });
+
+    Require(aio_write_nid_postfix(&write) == 0);
+    mutator.join();
+    RetainedFileSetBoundaryHookForTest_nid_no_patch(nullptr);
+
+    AioHoldWorkerForTest_nid_no_patch(false);
+    Wait(write);
+    Require(aio_return_nid_postfix(&write) == 4);
+
+    char data[8] = {};
+    Require(pread_nid_postfix(original, data, 8, 0) == 8);
+    Require(std::memcmp(data, "ORIGDONE", 8) == 0);
+
+    std::memset(data, 0, sizeof(data));
+    Require(pread_nid_postfix(replacement, data, 8, 0) == 8);
+    Require(std::memcmp(data, "REPLACED", 8) == 0);
+
+    std::memset(data, 0, sizeof(data));
+    Require(pread_nid_postfix(probeSlot, data, 8, 0) == 8);
+    Require(std::memcmp(data, "REPLACED", 8) == 0);
+
+    Require(close_nid_postfix(probeSlot) == 0);
+    Require(close_nid_postfix(original) == 0 && close_nid_postfix(replacement) == 0);
+    Require(std::filesystem::remove(originalPath));
+    Require(std::filesystem::remove(replacementPath));
+}
+
+void RetainedBoundaryEvacuationRace(const std::string& path) {
+    const std::string originalPath = path + ".bound-evac-orig";
+    const std::string replacementPath = path + ".bound-evac-repl";
+    const int original = open_nid_postfix(originalPath.c_str(), ORdwr | OCreat, 0600);
+    const int replacement = open_nid_postfix(replacementPath.c_str(), ORdwr | OCreat, 0600);
+    Require(original >= 0 && replacement >= 0);
+    Require(pwrite_nid_disambig1_nid_postfix(original, "ORIGINAL", 8, 0) == 8);
+    Require(pwrite_nid_disambig1_nid_postfix(replacement, "REPLACED", 8, 0) == 8);
+
+    const int targetSlot = dup_nid_postfix(original);
+    Require(targetSlot >= 0 && close_nid_postfix(targetSlot) == 0);
+
+    s_boundaryStage.store(-1, std::memory_order_release);
+    s_boundaryDescriptor.store(-1, std::memory_order_release);
+    s_boundaryReached.store(false, std::memory_order_release);
+    s_aioAttempted.store(false, std::memory_order_release);
+    s_aioFinished.store(false, std::memory_order_release);
+    RetainedFileSetBoundaryHookForTest_nid_no_patch(BoundaryEvacuationHook);
+
+    AioHoldWorkerForTest_nid_no_patch(true);
+    char writeData[] = "DONE";
+    auto write = Request(original, writeData, 4, 4);
+
+    std::thread aioThread([&] {
+        while (!s_boundaryReached.load(std::memory_order_acquire)) {
+            std::this_thread::yield();
+        }
+        s_aioAttempted.store(true, std::memory_order_release);
+        Require(aio_write_nid_postfix(&write) == 0);
+        s_aioFinished.store(true, std::memory_order_release);
+    });
+
+    Require(dup2_nid_postfix(replacement, targetSlot) == targetSlot);
+    aioThread.join();
+    RetainedFileSetBoundaryHookForTest_nid_no_patch(nullptr);
+
+    AioHoldWorkerForTest_nid_no_patch(false);
+    Wait(write);
+    Require(aio_return_nid_postfix(&write) == 4);
+
+    char data[8] = {};
+    Require(pread_nid_postfix(original, data, 8, 0) == 8);
+    Require(std::memcmp(data, "ORIGDONE", 8) == 0);
+
+    std::memset(data, 0, sizeof(data));
+    Require(pread_nid_postfix(replacement, data, 8, 0) == 8);
+    Require(std::memcmp(data, "REPLACED", 8) == 0);
+
+    std::memset(data, 0, sizeof(data));
+    Require(pread_nid_postfix(targetSlot, data, 8, 0) == 8);
+    Require(std::memcmp(data, "REPLACED", 8) == 0);
+
+    Require(close_nid_postfix(targetSlot) == 0);
+    Require(close_nid_postfix(original) == 0 && close_nid_postfix(replacement) == 0);
+    Require(std::filesystem::remove(originalPath));
+    Require(std::filesystem::remove(replacementPath));
+}
+
+void RetainedLiveStatusControl(const std::string& path) {
+    const std::string livePath = path + ".live-status";
+    const int file = open_nid_postfix(livePath.c_str(), ORdwr | OCreat, 0600);
+    Require(file >= 0);
+    Require(pwrite_nid_disambig1_nid_postfix(file, "HEAD", 4, 0) == 4);
+
+    const auto syncBaseline = FileSynchronousWritesForTest_nid_no_patch();
+    AioHoldWorkerForTest_nid_no_patch(true);
+    char text[] = "TAIL";
+    auto write = Request(file, text, 4, 0);
+    Require(aio_write_nid_postfix(&write) == 0);
+    Require(fcntl_nid_postfix(file, FSetfl, OAppend | OSync) == 0);
+    Require((fcntl_nid_postfix(file, FGetfl, 0) & (OAppend | OSync)) == (OAppend | OSync));
+    AioHoldWorkerForTest_nid_no_patch(false);
+
+    Wait(write);
+    Require(aio_return_nid_postfix(&write) == 4);
+    Require(FileSynchronousWritesForTest_nid_no_patch() == syncBaseline + 1);
+
+    char content[8] = {};
+    Require(pread_nid_postfix(file, content, 8, 0) == 8);
+    Require(std::memcmp(content, "HEADTAIL", 8) == 0);
+
+    std::atomic<bool> stop{false};
+    std::thread flipper([&] {
+        while (!stop.load(std::memory_order_relaxed)) {
+            fcntl_nid_postfix(file, FSetfl, OAppend | OSync);
+            fcntl_nid_postfix(file, FSetfl, 0);
+        }
+    });
+
+    for (int iteration = 0; iteration < 32; ++iteration) {
+        char chunk[] = "DATA";
+        auto concurrentWrite = Request(file, chunk, 4, 8 + iteration * 4);
+        Require(aio_write_nid_postfix(&concurrentWrite) == 0);
+        Wait(concurrentWrite);
+        Require(aio_return_nid_postfix(&concurrentWrite) == 4);
+    }
+
+    stop.store(true, std::memory_order_relaxed);
+    flipper.join();
+
+    Require(close_nid_postfix(file) == 0);
+    Require(std::filesystem::remove(livePath));
+}
+
 }
 
 int main() {
@@ -411,6 +612,9 @@ int main() {
     QueueLimit(file);
     Cancel(file);
     SyncOrder(file);
+    RetainedBoundaryAllocationRace(path);
+    RetainedBoundaryEvacuationRace(path);
+    RetainedLiveStatusControl(path);
     Require(close_nid_postfix(readOnly) == 0 && close_nid_postfix(file) == 0);
     Require(std::filesystem::remove(path));
     std::puts("guest_kernel_sys_aio passed");

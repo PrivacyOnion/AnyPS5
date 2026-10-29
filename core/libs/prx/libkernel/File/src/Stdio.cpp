@@ -640,6 +640,7 @@ extern "C" int APS5_VABI pipe_nid_postfix(int* descriptors) {
     if (!descriptors) return PosixFailure(GUEST_EFAULT);
     const GuestArena::HostWrite destination(descriptors, 2 * sizeof(int));
     if (!destination.Open()) return PosixFailure(GUEST_EFAULT);
+    auto ownership = File::LockDescriptorOwnership_nid_no_patch();
     int native[2];
 #ifdef _WIN32
     const int result = ::_pipe(native, 65536, _O_BINARY);
@@ -692,6 +693,7 @@ int File::DuplicateFrom(int fd, int start) {
     for (const int descriptor : below) close_nid_postfix(descriptor);
     return duplicate < 0 ? PosixFailure(error) : duplicate;
 #else
+    auto ownership = File::LockDescriptorOwnership_nid_no_patch();
     if (!File::EvacuatePrivateFrom_nid_no_patch(start)) return PosixFailure(SceErrorFromErrno(errno) & 0xffff);
     const int duplicate = ::fcntl(fd, F_DUPFD, start);
     if (duplicate < 0) return PosixFailure(SceErrorFromErrno(errno) & 0xffff);
@@ -803,6 +805,7 @@ int APS5_VABI nmount_nid_postfix(const KernelIovec* iov, unsigned int niov, int 
 }
 
 int APS5_VABI close_nid_postfix(int d) {
+    auto ownership = File::LockDescriptorOwnership_nid_no_patch();
     if (File::IsPrivateDescriptor_nid_no_patch(d)) return PosixFailure(GUEST_EBADF);
     if (File::IsHostStream(d)) return PosixFailure(GUEST_EPERM);
     int socketError = 0;
@@ -862,6 +865,7 @@ int APS5_VABI dup_nid_postfix(int d) {
     if (d < 0 || File::IsPrivateDescriptor_nid_no_patch(d)) return PosixFailure(GUEST_EBADF);
     if (IsKqueueDescriptor_nid_no_patch(d)) throw std::runtime_error(std::string(__func__) + ": duplicating a kqueue descriptor is not supported");
     if (IsKsemDescriptor(d)) throw std::runtime_error(std::string(__func__) + ": duplicating a ksem id is not supported");
+    auto ownership = File::LockDescriptorOwnership_nid_no_patch();
 #ifdef _WIN32
     const int duplicate = WithoutParameterHandler([d] { return ::_dup(d); });
     if (duplicate >= 0) File::DuplicateSharedMemoryDescriptor_nid_no_patch(d, duplicate);
@@ -880,11 +884,13 @@ int APS5_VABI dup_nid_postfix(int d) {
 
 int APS5_VABI dup2_nid_postfix(int from, int to) {
     if (from < 0 || to < 0 || File::IsPrivateDescriptor_nid_no_patch(from)) return PosixFailure(GUEST_EBADF);
+    auto ownership = File::LockDescriptorOwnership_nid_no_patch();
     if (GuestSockets::IsOpen(from)) {
         if (from != to && to <= 2)
             throw std::runtime_error(std::string(__func__) + ": moving a guest socket onto standard descriptor " + std::to_string(to) + " is not supported");
         if (from != to && !File::EvacuatePrivateDescriptor_nid_no_patch(to))
             return PosixFailure(SceErrorFromErrno(errno) & 0xffff);
+        File::InvokeBoundaryHook_nid_no_patch(1, to);
         if (GuestSockets::DuplicateTo(from, to) < 0) return -1;
         if (from == to) return to;
         File::ForgetRandomDevice(to);
@@ -906,6 +912,7 @@ int APS5_VABI dup2_nid_postfix(int from, int to) {
     EqueueDescriptorClosed(to);
     auto positioned = File::LockPositionedTransfer(to);
     auto* const standard = HostStandardHandle_nid_no_patch(to);
+    File::InvokeBoundaryHook_nid_no_patch(1, to);
     int duplicated = File::ReplaceSharedMemoryDescriptor_nid_no_patch(from, to);
     if (duplicated == -2) duplicated = WithoutParameterHandler([from, to] { return ::_dup2(from, to); });
     KeepStandardHandle_nid_no_patch(to, standard);
@@ -928,6 +935,7 @@ int APS5_VABI dup2_nid_postfix(int from, int to) {
     if (to == 1) PreserveHostStandardOutput();
     if (to == 2) PreserveHostStandardError();
     if (!File::EvacuatePrivateDescriptor_nid_no_patch(to)) return PosixFailure(SceErrorFromErrno(errno) & 0xffff);
+    File::InvokeBoundaryHook_nid_no_patch(1, to);
     const int result = ::dup2(from, to);
     if (result < 0) return PosixFailure(SceErrorFromErrno(errno) & 0xffff);
     File::ForgetDirectoryDescriptor(to);
@@ -951,6 +959,7 @@ int APS5_VABI flock_nid_postfix(int d, int operation) {
     if (handle == INVALID_HANDLE_VALUE) return PosixFailure(GUEST_EBADF);
     if (::GetFileType(handle) == FILE_TYPE_PIPE) return PosixFailure(GUEST_EOPNOTSUPP);
 #else
+    auto ownership = File::LockDescriptorOwnership_nid_no_patch();
     if (File::IsPrivateDescriptor_nid_no_patch(d)) return PosixFailure(GUEST_EBADF);
     struct stat status;
     if (::fstat(d, &status) != 0) return PosixFailure(GUEST_EBADF);

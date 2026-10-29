@@ -92,6 +92,29 @@ RetainedOpenFile* FailRetain(int error) {
     return nullptr;
 }
 
+std::recursive_mutex g_descriptorOwnershipMutex;
+std::atomic<void (*)(int, int)> g_boundaryHook{nullptr};
+
+}
+
+namespace File {
+
+std::unique_lock<std::recursive_mutex> LockDescriptorOwnership_nid_no_patch() {
+    return std::unique_lock(g_descriptorOwnershipMutex);
+}
+
+void SetBoundaryHookForTest_nid_no_patch(void (*hook)(int, int)) {
+    g_boundaryHook.store(hook, std::memory_order_release);
+}
+
+void InvokeBoundaryHook_nid_no_patch(int stage, int descriptor) {
+    if (const auto hook = g_boundaryHook.load(std::memory_order_acquire)) hook(stage, descriptor);
+}
+
+}
+
+namespace {
+
 bool ExceedsTransferLimit(std::size_t bytes) {
     return bytes > static_cast<std::size_t>(std::numeric_limits<std::int64_t>::max());
 }
@@ -100,7 +123,6 @@ struct RetainedState;
 
 #ifndef _WIN32
 constexpr int PrivateDescriptorBase = 4096;
-std::mutex g_privateMutex;
 std::unordered_map<int, std::weak_ptr<RetainedState>> g_privateDescriptors;
 std::atomic<std::size_t> g_privateCount{0};
 
@@ -126,7 +148,7 @@ struct RetainedState {
     std::shared_mutex ioMutex;
     int hostFd = -1;
 #endif
-    std::shared_ptr<int> statusFlags;
+    std::shared_ptr<std::atomic<int>> statusFlags;
     std::optional<AppArchiveNode> archivedNode;
     bool isDirectory = false;
     bool isVirtualDirectory = false;
@@ -144,11 +166,11 @@ struct RetainedState {
         if (fd < 0) return;
         hostFd = -1;
         {
-            std::lock_guard table(g_privateMutex);
+            auto ownership = File::LockDescriptorOwnership_nid_no_patch();
             g_privateDescriptors.erase(fd);
             g_privateCount.store(g_privateDescriptors.size(), std::memory_order_release);
+            ::close(fd);
         }
-        ::close(fd);
 #endif
     }
 
@@ -204,7 +226,7 @@ namespace File {
 
 bool IsPrivateDescriptor_nid_no_patch(int descriptor) {
     if (descriptor < 0 || g_privateCount.load(std::memory_order_acquire) == 0) return false;
-    std::lock_guard table(g_privateMutex);
+    auto ownership = LockDescriptorOwnership_nid_no_patch();
     const auto found = g_privateDescriptors.find(descriptor);
     return found != g_privateDescriptors.end() && !found->second.expired();
 }
@@ -214,7 +236,7 @@ bool EvacuatePrivateDescriptor_nid_no_patch(int descriptor) {
     for (;;) {
         std::shared_ptr<RetainedState> state;
         {
-            std::lock_guard table(g_privateMutex);
+            auto ownership = LockDescriptorOwnership_nid_no_patch();
             const auto found = g_privateDescriptors.find(descriptor);
             if (found == g_privateDescriptors.end()) return true;
             state = found->second.lock();
@@ -225,7 +247,7 @@ bool EvacuatePrivateDescriptor_nid_no_patch(int descriptor) {
             }
         }
         std::unique_lock ioLock(state->ioMutex);
-        std::lock_guard table(g_privateMutex);
+        auto ownership = LockDescriptorOwnership_nid_no_patch();
         if (state->hostFd != descriptor) continue;
         const int moved = AllocatePrivateDescriptor(descriptor, descriptor);
         if (moved < 0) return false;
@@ -240,6 +262,7 @@ bool EvacuatePrivateDescriptor_nid_no_patch(int descriptor) {
 
 bool EvacuatePrivateFrom_nid_no_patch(int start) {
     if (start < 0 || g_privateCount.load(std::memory_order_acquire) == 0) return true;
+    auto ownership = LockDescriptorOwnership_nid_no_patch();
     for (int target = start; target >= 0; ++target) {
         if (IsPrivateDescriptor_nid_no_patch(target)) return EvacuatePrivateDescriptor_nid_no_patch(target);
         if (::fcntl(target, F_GETFD) < 0) return true;
@@ -276,6 +299,7 @@ RetainedOpenFile* RetainOpenFile_nid_no_patch(int descriptor, bool requireRead, 
 
     auto state = std::make_shared<RetainedState>();
 #ifdef _WIN32
+    auto ownership = File::LockDescriptorOwnership_nid_no_patch();
     const auto positioned = File::LockPositionedTransfer(descriptor);
     const HANDLE source = WindowsDescriptorHandle_nid_no_patch(descriptor);
     if (source == INVALID_HANDLE_VALUE) return FailRetain(GuestEbadf);
@@ -294,6 +318,7 @@ RetainedOpenFile* RetainOpenFile_nid_no_patch(int descriptor, bool requireRead, 
     HANDLE duplicate = INVALID_HANDLE_VALUE;
     if (!::DuplicateHandle(::GetCurrentProcess(), source, ::GetCurrentProcess(), &duplicate, 0, FALSE, DUPLICATE_SAME_ACCESS))
         return FailRetain(GuestErrnoFromHost(WindowsOpenError_nid_no_patch(::GetLastError())));
+    File::InvokeBoundaryHook_nid_no_patch(0, descriptor);
     state->handle = duplicate;
     state->positionedMutex = File::PositionedTransferMutex_nid_no_patch(descriptor);
     state->statusFlags = File::DescriptorStatus_nid_no_patch(descriptor);
@@ -304,41 +329,43 @@ RetainedOpenFile* RetainOpenFile_nid_no_patch(int descriptor, bool requireRead, 
     state->sharedMemoryWritable = sharedWritable == 1;
     return new RetainedOpenFile{std::move(state)};
 #else
-    const int privateFd = AllocatePrivateDescriptor(descriptor, -1);
-    if (privateFd < 0) return FailRetain(GuestErrnoFromHost(errno));
-    const int flags = ::fcntl(privateFd, F_GETFL);
-    if (flags < 0) {
-        const int error = errno;
-        ::close(privateFd);
-        return FailRetain(GuestErrnoFromHost(error));
-    }
-    const int access = flags & O_ACCMODE;
-    if ((requireRead && access != O_RDONLY && access != O_RDWR) ||
-        (requireWrite && access != O_WRONLY && access != O_RDWR)) {
-        ::close(privateFd);
-        return FailRetain(GuestEbadf);
-    }
-    struct stat status{};
-    if (::fstat(privateFd, &status) != 0) {
-        const int error = errno;
-        ::close(privateFd);
-        return FailRetain(GuestErrnoFromHost(error));
-    }
-    const bool isDirectory = File::IsDirectoryDescriptor(descriptor) || S_ISDIR(status.st_mode);
-    if (!isDirectory && !S_ISREG(status.st_mode)) {
-        ::close(privateFd);
-        return FailRetain(S_ISFIFO(status.st_mode) || S_ISCHR(status.st_mode) ? GuestEopnotsupp : GuestEbadf);
-    }
-    if (isDirectory && requireWrite) {
-        ::close(privateFd);
-        return FailRetain(GuestEbadf);
-    }
-    state->hostFd = privateFd;
-    state->statusFlags = File::DescriptorStatus_nid_no_patch(descriptor);
-    state->isDirectory = isDirectory;
-    state->isVirtualDirectory = File::IsVirtualDirectoryDescriptor(descriptor);
+    int privateFd = -1;
     {
-        std::lock_guard table(g_privateMutex);
+        auto ownership = File::LockDescriptorOwnership_nid_no_patch();
+        privateFd = AllocatePrivateDescriptor(descriptor, -1);
+        if (privateFd < 0) return FailRetain(GuestErrnoFromHost(errno));
+        File::InvokeBoundaryHook_nid_no_patch(0, privateFd);
+        const int flags = ::fcntl(privateFd, F_GETFL);
+        if (flags < 0) {
+            const int error = errno;
+            ::close(privateFd);
+            return FailRetain(GuestErrnoFromHost(error));
+        }
+        const int access = flags & O_ACCMODE;
+        if ((requireRead && access != O_RDONLY && access != O_RDWR) ||
+            (requireWrite && access != O_WRONLY && access != O_RDWR)) {
+            ::close(privateFd);
+            return FailRetain(GuestEbadf);
+        }
+        struct stat status{};
+        if (::fstat(privateFd, &status) != 0) {
+            const int error = errno;
+            ::close(privateFd);
+            return FailRetain(GuestErrnoFromHost(error));
+        }
+        const bool isDirectory = File::IsDirectoryDescriptor(descriptor) || S_ISDIR(status.st_mode);
+        if (!isDirectory && !S_ISREG(status.st_mode)) {
+            ::close(privateFd);
+            return FailRetain(S_ISFIFO(status.st_mode) || S_ISCHR(status.st_mode) ? GuestEopnotsupp : GuestEbadf);
+        }
+        if (isDirectory && requireWrite) {
+            ::close(privateFd);
+            return FailRetain(GuestEbadf);
+        }
+        state->hostFd = privateFd;
+        state->statusFlags = File::DescriptorStatus_nid_no_patch(descriptor);
+        state->isDirectory = isDirectory;
+        state->isVirtualDirectory = File::IsVirtualDirectoryDescriptor(descriptor);
         g_privateDescriptors[privateFd] = state;
         g_privateCount.store(g_privateDescriptors.size(), std::memory_order_release);
     }
@@ -406,8 +433,9 @@ std::int64_t WriteRetainedOpenFile_nid_no_patch(RetainedOpenFile* retained, cons
     if (ExceedsTransferLimit(bytes) || offset < 0) return FailGuest(GuestEinval);
     if (buffer == nullptr && bytes != 0) return FailGuest(GuestEfault);
     GuestArena::GuestArenaPrepareHostRead_nid_no_patch(buffer, bytes);
-    const bool appends = state.statusFlags && (*state.statusFlags & GuestOAppend) != 0;
-    const bool syncs = state.statusFlags && (*state.statusFlags & GuestOSync) != 0;
+    const int flags = state.statusFlags ? state.statusFlags->load(std::memory_order_acquire) : 0;
+    const bool appends = (flags & GuestOAppend) != 0;
+    const bool syncs = (flags & GuestOSync) != 0;
 #ifdef _WIN32
     if (bytes > static_cast<std::size_t>(std::numeric_limits<DWORD>::max()))
         throw std::runtime_error("WriteRetainedOpenFile: bytes exceeds platform limit");
@@ -450,7 +478,6 @@ std::int64_t WriteRetainedOpenFile_nid_no_patch(RetainedOpenFile* retained, cons
     char empty = 0;
     const void* source = buffer == nullptr ? &empty : buffer;
     std::int64_t written = -2;
-#ifdef __APPLE__
     if (appends) {
         std::unique_lock ioLock(state.ioMutex);
         if (state.hostFd < 0) return FailGuest(GuestEbadf);
@@ -478,8 +505,6 @@ std::int64_t WriteRetainedOpenFile_nid_no_patch(RetainedOpenFile* retained, cons
         }
         return written;
     }
-#endif
-    (void)appends;
     std::shared_lock ioLock(state.ioMutex);
     if (state.hostFd < 0) return FailGuest(GuestEbadf);
     const bool sharedMemory = File::IsSharedMemoryDescriptor_nid_no_patch(state.hostFd);
@@ -499,6 +524,10 @@ int SyncRetainedOpenFile_nid_no_patch(RetainedOpenFile* retained) {
     if (retained == nullptr || !retained->state) return static_cast<int>(FailGuest(GuestEbadf));
     const int error = SyncState(*retained->state);
     return error == 0 ? 0 : static_cast<int>(FailGuest(error));
+}
+
+void RetainedFileSetBoundaryHookForTest_nid_no_patch(void (*hook)(int stage, int descriptor)) {
+    File::SetBoundaryHookForTest_nid_no_patch(hook);
 }
 
 }
