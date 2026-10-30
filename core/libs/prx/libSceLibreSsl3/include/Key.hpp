@@ -3,6 +3,11 @@
 #include <cstddef>
 #include <cstdint>
 
+inline constexpr std::int32_t NidRsaEncryption = 6;
+inline constexpr std::int32_t NidDhKeyAgreement = 28;
+inline constexpr std::int32_t NidDsa = 116;
+inline constexpr std::int32_t NidRsassaPss = 912;
+
 struct LibreSsl3EvpPkey {
     std::int32_t type;
     std::int32_t references;
@@ -34,7 +39,9 @@ struct LibreSsl3SslCtx {
 };
 
 static_assert(sizeof(LibreSsl3EvpPkey) == 32);
+static_assert(offsetof(LibreSsl3EvpPkey, type) == 0);
 static_assert(offsetof(LibreSsl3EvpPkey, references) == 4);
+static_assert(offsetof(LibreSsl3EvpPkey, key) == 16);
 static_assert(sizeof(LibreSsl3EcKey) == 64);
 static_assert(offsetof(LibreSsl3EcKey, references) == 48);
 static_assert(offsetof(LibreSsl3SslCtx, references) == 40);

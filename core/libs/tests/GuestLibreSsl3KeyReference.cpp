@@ -7,6 +7,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <limits>
+#include <stdexcept>
 #include <thread>
 
 static void Require(bool condition, const char* message) {
@@ -59,6 +60,76 @@ static void CheckKey(TRetain retain, std::size_t referenceOffset) {
     Require(std::memcmp(&guarded, expected.data(), sizeof(guarded)) == 0, "concurrent count or adjacent bytes changed");
 }
 
+static void CheckAccessors() {
+    int markerRsa = 0x11;
+    int markerPss = 0x22;
+    int markerDsa = 0x33;
+    int markerDh = 0x44;
+    int markerOther = 0x55;
+
+    LibreSsl3EvpPkey rsaKey{};
+    rsaKey.type = NidRsaEncryption;
+    rsaKey.key = &markerRsa;
+
+    LibreSsl3EvpPkey pssKey{};
+    pssKey.type = NidRsassaPss;
+    pssKey.key = &markerPss;
+
+    LibreSsl3EvpPkey dsaKey{};
+    dsaKey.type = NidDsa;
+    dsaKey.key = &markerDsa;
+
+    LibreSsl3EvpPkey dhKey{};
+    dhKey.type = NidDhKeyAgreement;
+    dhKey.key = &markerDh;
+
+    LibreSsl3EvpPkey otherKey{};
+    otherKey.type = 0;
+    otherKey.key = &markerOther;
+
+    Require(EVP_PKEY_get0_RSA_nid_postfix(&rsaKey) == &markerRsa, "get0_RSA returned incorrect pointer for NidRsaEncryption");
+    Require(EVP_PKEY_get0_RSA_nid_postfix(&pssKey) == &markerPss, "get0_RSA returned incorrect pointer for NidRsassaPss");
+    Require(EVP_PKEY_get0_RSA_nid_postfix(&dsaKey) == nullptr, "get0_RSA returned non-null for DSA key");
+    Require(EVP_PKEY_get0_RSA_nid_postfix(&dhKey) == nullptr, "get0_RSA returned non-null for DH key");
+    Require(EVP_PKEY_get0_RSA_nid_postfix(&otherKey) == nullptr, "get0_RSA returned non-null for unknown key type");
+
+    Require(EVP_PKEY_get0_DSA_nid_postfix(&dsaKey) == &markerDsa, "get0_DSA returned incorrect pointer for NidDsa");
+    Require(EVP_PKEY_get0_DSA_nid_postfix(&rsaKey) == nullptr, "get0_DSA returned non-null for RSA key");
+    Require(EVP_PKEY_get0_DSA_nid_postfix(&pssKey) == nullptr, "get0_DSA returned non-null for PSS key");
+    Require(EVP_PKEY_get0_DSA_nid_postfix(&dhKey) == nullptr, "get0_DSA returned non-null for DH key");
+    Require(EVP_PKEY_get0_DSA_nid_postfix(&otherKey) == nullptr, "get0_DSA returned non-null for unknown key type");
+
+    Require(EVP_PKEY_get0_DH_nid_postfix(&dhKey) == &markerDh, "get0_DH returned incorrect pointer for NidDhKeyAgreement");
+    Require(EVP_PKEY_get0_DH_nid_postfix(&rsaKey) == nullptr, "get0_DH returned non-null for RSA key");
+    Require(EVP_PKEY_get0_DH_nid_postfix(&pssKey) == nullptr, "get0_DH returned non-null for PSS key");
+    Require(EVP_PKEY_get0_DH_nid_postfix(&dsaKey) == nullptr, "get0_DH returned non-null for DSA key");
+    Require(EVP_PKEY_get0_DH_nid_postfix(&otherKey) == nullptr, "get0_DH returned non-null for unknown key type");
+
+    bool threw = false;
+    try {
+        EVP_PKEY_get0_RSA_nid_postfix(nullptr);
+    } catch (const std::invalid_argument&) {
+        threw = true;
+    }
+    Require(threw, "get0_RSA accepted null key");
+
+    threw = false;
+    try {
+        EVP_PKEY_get0_DSA_nid_postfix(nullptr);
+    } catch (const std::invalid_argument&) {
+        threw = true;
+    }
+    Require(threw, "get0_DSA accepted null key");
+
+    threw = false;
+    try {
+        EVP_PKEY_get0_DH_nid_postfix(nullptr);
+    } catch (const std::invalid_argument&) {
+        threw = true;
+    }
+    Require(threw, "get0_DH accepted null key");
+}
+
 int main(int argc, char** argv) {
     if (argc == 1 || std::strcmp(argv[1], "evp") == 0)
         CheckKey<LibreSsl3EvpPkey>(EVP_PKEY_up_ref_nid_postfix, 4);
@@ -68,5 +139,7 @@ int main(int argc, char** argv) {
         CheckKey<LibreSsl3SslCtx>(SSL_CTX_up_ref_nid_postfix, 40);
     if (argc == 1 || std::strcmp(argv[1], "store") == 0)
         CheckKey<LibreSslX509Store>(X509_STORE_up_ref_nid_postfix, 128);
+    if (argc == 1 || std::strcmp(argv[1], "accessors") == 0)
+        CheckAccessors();
     return 0;
 }

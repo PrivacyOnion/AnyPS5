@@ -49,4 +49,28 @@ int APS5_VABI X509_STORE_up_ref_nid_postfix(LibreSslX509Store* store) {
     return Retain_nid_no_patch(store->references);
 }
 
+void* APS5_VABI EVP_PKEY_get0_DH_nid_postfix(LibreSsl3EvpPkey* key) {
+    if (!key)
+        throw std::invalid_argument("EVP_PKEY_get0_DH requires a key");
+    if (key->type == NidDhKeyAgreement)
+        return key->key;
+    return nullptr;
+}
+
+void* APS5_VABI EVP_PKEY_get0_DSA_nid_postfix(LibreSsl3EvpPkey* key) {
+    if (!key)
+        throw std::invalid_argument("EVP_PKEY_get0_DSA requires a key");
+    if (key->type == NidDsa)
+        return key->key;
+    return nullptr;
+}
+
+void* APS5_VABI EVP_PKEY_get0_RSA_nid_postfix(LibreSsl3EvpPkey* key) {
+    if (!key)
+        throw std::invalid_argument("EVP_PKEY_get0_RSA requires a key");
+    if (key->type == NidRsaEncryption || key->type == NidRsassaPss)
+        return key->key;
+    return nullptr;
+}
+
 }

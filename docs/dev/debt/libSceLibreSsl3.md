@@ -2,7 +2,7 @@
 
 ### Unknown function info
 
-- [libSceLibreSsl3 pending exports](../../../core/libs/prx/libSceLibreSsl3/Export.cpp) - 79 named callable exports, excluding `CRYPTO_memcmp`, `MD5`, `SHA1`, `d2i_ASN1_INTEGER`, `EVP_PKEY_up_ref`, `EC_KEY_up_ref`, `SSL_CTX_up_ref` and `X509_STORE_up_ref`, remain unimplemented from the [PS5 3.20 export table](https://github.com/DNNDHH/PS5-3.20_Libs/blob/b2a77c09cd71c01f34c790cfbe98c751a13262ad/libSceLibreSsl3.c), cross-checked against the same module in PS5 firmware 13.60. Their signatures and behaviour are unverified; the declarations use the no-parameter unknown-signature convention and throw through `NotImplemented_nid_no_patch`.
+- [libSceLibreSsl3 pending exports](../../../core/libs/prx/libSceLibreSsl3/Export.cpp) - 76 named callable exports, excluding `CRYPTO_memcmp`, `MD5`, `SHA1`, `d2i_ASN1_INTEGER`, `EVP_PKEY_get0_DH`, `EVP_PKEY_get0_DSA`, `EVP_PKEY_get0_RSA`, `EVP_PKEY_up_ref`, `EC_KEY_up_ref`, `SSL_CTX_up_ref` and `X509_STORE_up_ref`, remain unimplemented from the [PS5 3.20 export table](https://github.com/DNNDHH/PS5-3.20_Libs/blob/b2a77c09cd71c01f34c790cfbe98c751a13262ad/libSceLibreSsl3.c), cross-checked against the same module in PS5 firmware 13.60. Their signatures and behaviour are unverified; the declarations use the no-parameter unknown-signature convention and throw through `NotImplemented_nid_no_patch`.
 
 ### Functional
 
@@ -11,6 +11,8 @@
 - [MD5 and SHA1](../../../core/libs/prx/libSceLibreSsl3/src/Digest.cpp) (libSceLibreSsl3) - follow LibreSSL's [md5.c, sha1.c](https://github.com/libressl/openbsd/tree/bc9483725c5815efb64b6d9acc52fc5fba139212/src/lib/libcrypto) and hash through libSceLibreSsl's `MD5_*` and `SHA1_*`. A null digest buffer, which LibreSSL 4.0.0 does not check, throws. Nothing is checked on the console
 - [EVP_PKEY_up_ref, EC_KEY_up_ref and X509_STORE_up_ref](../../../core/libs/prx/libSceLibreSsl3/src/Key.cpp) - console layouts and retain/release interoperability are unverified. The 32-byte EVP and 64-byte EC layouts, with counters at offsets 4 and 48, follow [LibreSSL 4.0.0](https://github.com/libressl/openbsd/tree/ce488b78e0bd994780569df718596b9776ff681a/src/lib/libcrypto) `evp/evp_local.h`, `evp/p_lib.c`, `ec/ec_local.h` and `ec/ec_key.c`. The 136-byte store layout, with its counter at offset 128, follows `LibreSslX509Store` from libSceLibreSsl and [x509_lu.c](https://github.com/libressl/openbsd/blob/ce488b78e0bd994780569df718596b9776ff681a/src/lib/libcrypto/x509/x509_lu.c#L240-L244). Atomic retains replace its internal mutex; future releases must synchronize with the same counters. With no key or store constructors/destructors in this module, tests use caller-owned objects without validating allocator or destruction compatibility. Null keys or stores and signed-counter overflow, undefined upstream, throw without mutation. Closes when: console layouts and lifetime interoperability are measured.
 - [SSL_CTX_up_ref](../../../core/libs/prx/libSceLibreSsl3/src/Key.cpp) - console layout and retain/release interoperability are unverified. The SSL_CTX layout, with references counter at offset 40, follows [LibreSSL 4.0.0](https://github.com/libressl/openbsd/blob/bc9483725c5815efb64b6d9acc52fc5fba139212/src/lib/libssl/ssl_lib.c#L2244-L2248). Atomic retain replaces internal locking; future releases must synchronize with the same counter. With no context constructor or destructor in this module, tests use caller-owned objects without validating allocator or destruction compatibility. Null context and signed-counter overflow, undefined upstream, throw without mutation. Closes when: console layout and lifetime interoperability are measured.
+- [EVP_PKEY_get0_RSA, EVP_PKEY_get0_DSA and EVP_PKEY_get0_DH](../../../core/libs/prx/libSceLibreSsl3/src/Key.cpp) - console signatures, key layouts and error reporting are unverified. Accessors validate key types against NIDs 6 (`NidRsaEncryption`) and 912 (`NidRsassaPss`) for RSA, 116 (`NidDsa`) for DSA, and 28 (`NidDhKeyAgreement`) for DH following [LibreSSL 4.0.0](https://github.com/libressl/openbsd/blob/ce488b78e0bd994780569df718596b9776ff681a/src/lib/libcrypto/evp/p_lib.c#L630-L750). Error codes (`EVPerror`) on type mismatches are not recorded because ERR is unmodeled in libSceLibreSsl3. Null keys throw `std::invalid_argument`. Closes when: console key layouts and error queue integration are measured.
+
 
 
 
@@ -205,6 +207,9 @@
 | `unknown` | `yLm956jsJpc` |
 | `unknown` | `z8fsXF8JuL0` |
 | `unknown` | `zCa75KLWWn4` |
+
+
+
 
 
 
