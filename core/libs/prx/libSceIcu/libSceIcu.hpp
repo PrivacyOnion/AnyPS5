@@ -62,5 +62,6 @@
 #include "TrieEnumeration.hpp"
 #include "TrieBuilder.hpp"
 #include "DataSwapper.hpp"
+#include "LocaleKeywords.hpp"
 
 #include "prx/libSceIcu/include/Api.hpp"
