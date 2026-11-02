@@ -18,6 +18,7 @@
 #include <cstdlib>
 #include <memory>
 #include <mutex>
+#include <stdexcept>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -73,6 +74,12 @@ static XmlBinding* FindBinding(NKWebKit::GuestParserCtxt* ctxt) {
         return it->second.get();
     }
     return nullptr;
+}
+
+static XmlBinding* RequireBinding(void* ctx, const char* function) {
+    auto* b = FindBinding(static_cast<NKWebKit::GuestParserCtxt*>(ctx));
+    if (!b || !b->host_ctxt) throw std::invalid_argument(std::string(function) + ": not a parser context created by this library");
+    return b;
 }
 
 static void SyncHostErrorToGuest(xmlErrorPtr h, NKWebKit::GuestXmlError* g, XmlBinding* b) {
@@ -653,16 +660,12 @@ NKWebKit::GuestParserCtxt* APS5_VABI xmlCreatePushParserCtxt_nid_postfix(NKWebKi
 }
 
 NKWebKit::GuestXmlError* APS5_VABI xmlCtxtGetLastError_nid_postfix(void* ctx) {
-    auto* b = FindBinding(reinterpret_cast<NKWebKit::GuestParserCtxt*>(ctx));
-    xmlErrorPtr err = xmlCtxtGetLastError(b ? b->host_ctxt : ctx);
+    if (!ctx) return nullptr;
+    auto* b = RequireBinding(ctx, __func__);
+    xmlErrorPtr err = xmlCtxtGetLastError(b->host_ctxt);
     if (!err) return nullptr;
-    if (b) {
-        SyncHostErrorToGuest(err, &b->guest_error, b);
-        return &b->guest_error;
-    }
-    static thread_local NKWebKit::GuestXmlError s_staticError{};
-    SyncHostErrorToGuest(err, &s_staticError, nullptr);
-    return &s_staticError;
+    SyncHostErrorToGuest(err, &b->guest_error, b);
+    return &b->guest_error;
 }
 
 int APS5_VABI xmlCtxtUseOptions_nid_postfix(NKWebKit::GuestParserCtxt* ctxt, int options) {
@@ -692,6 +695,12 @@ void APS5_VABI xmlFreeDoc_nid_postfix(NKWebKit::GuestDoc* cur) {
             if (owned != g_guestDocs.end()) {
                 guest_doc = std::move(owned->second);
                 g_guestDocs.erase(owned);
+            }
+            for (auto& binding : g_xmlBindings) {
+                if (binding.second->host_ctxt && binding.second->host_ctxt->myDoc == host_doc) {
+                    binding.second->host_ctxt->myDoc = nullptr;
+                    binding.second->guest_ctxt.myDoc = nullptr;
+                }
             }
         }
     }
@@ -793,23 +802,23 @@ int APS5_VABI xmlRegisterOutputCallbacks_nid_postfix(NKWebKit::GuestOutputMatchC
 }
 
 void APS5_VABI xmlSAX2EndDocument_nid_postfix(void* ctx) {
-    auto* b = FindBinding(reinterpret_cast<NKWebKit::GuestParserCtxt*>(ctx));
-    xmlSAX2EndDocument(b ? b->host_ctxt : ctx);
+    if (!ctx) return;
+    xmlSAX2EndDocument(RequireBinding(ctx, __func__)->host_ctxt);
 }
 
 void APS5_VABI xmlSAX2EntityDecl_nid_postfix(void* ctx, const uint8_t* name, int type, const uint8_t* publicId, const uint8_t* systemId, const uint8_t* content) {
-    auto* b = FindBinding(reinterpret_cast<NKWebKit::GuestParserCtxt*>(ctx));
-    xmlSAX2EntityDecl(b ? b->host_ctxt : ctx, reinterpret_cast<const xmlChar*>(name), type, reinterpret_cast<const xmlChar*>(publicId), reinterpret_cast<const xmlChar*>(systemId), const_cast<xmlChar*>(reinterpret_cast<const xmlChar*>(content)));
+    if (!ctx) return;
+    xmlSAX2EntityDecl(RequireBinding(ctx, __func__)->host_ctxt, reinterpret_cast<const xmlChar*>(name), type, reinterpret_cast<const xmlChar*>(publicId), reinterpret_cast<const xmlChar*>(systemId), const_cast<xmlChar*>(reinterpret_cast<const xmlChar*>(content)));
 }
 
 void APS5_VABI xmlSAX2InternalSubset_nid_postfix(void* ctx, const uint8_t* name, const uint8_t* ExternalID, const uint8_t* SystemID) {
-    auto* b = FindBinding(reinterpret_cast<NKWebKit::GuestParserCtxt*>(ctx));
-    xmlSAX2InternalSubset(b ? b->host_ctxt : ctx, reinterpret_cast<const xmlChar*>(name), reinterpret_cast<const xmlChar*>(ExternalID), reinterpret_cast<const xmlChar*>(SystemID));
+    if (!ctx) return;
+    xmlSAX2InternalSubset(RequireBinding(ctx, __func__)->host_ctxt, reinterpret_cast<const xmlChar*>(name), reinterpret_cast<const xmlChar*>(ExternalID), reinterpret_cast<const xmlChar*>(SystemID));
 }
 
 void APS5_VABI xmlSAX2StartDocument_nid_postfix(void* ctx) {
-    auto* b = FindBinding(reinterpret_cast<NKWebKit::GuestParserCtxt*>(ctx));
-    xmlSAX2StartDocument(b ? b->host_ctxt : ctx);
+    if (!ctx) return;
+    xmlSAX2StartDocument(RequireBinding(ctx, __func__)->host_ctxt);
 }
 
 void APS5_VABI xmlStopParser_nid_postfix(NKWebKit::GuestParserCtxt* ctxt) {

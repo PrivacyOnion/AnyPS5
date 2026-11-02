@@ -177,6 +177,7 @@ void TestDecode(const std::vector<uint8_t>& jpegData, const uint8_t* expectedMar
 
     jpeg_destroy_decompress_nid_postfix(&guest_cinfo);
 
+    AssertTrue(jerr.num_warnings == 0, "the decode should not warn about corrupt data");
     AssertTrue(guestPixels == hostPixels, "decoded pixels differ from host libjpeg output");
 }
 
@@ -301,6 +302,13 @@ int main() {
     const uint8_t app1Data[] = "EXIF_TEST_MARKER_PAYLOAD";
     GenerateJpeg(baselineJpeg, 16, 16, 3, JCS_RGB, false, 0, app1Data, sizeof(app1Data));
     TestDecode(baselineJpeg, app1Data, sizeof(app1Data));
+
+    std::vector<uint8_t> skippedPayload(96, 'A');
+    skippedPayload[skippedPayload.size() - 12] = 0xFF;
+    skippedPayload[skippedPayload.size() - 11] = 0xD9;
+    std::vector<uint8_t> skippedJpeg;
+    GenerateJpeg(skippedJpeg, 16, 16, 3, JCS_RGB, false, 0, skippedPayload.data(), skippedPayload.size());
+    TestDecode(skippedJpeg, nullptr, 0);
 
     std::vector<uint8_t> grayJpeg;
     GenerateJpeg(grayJpeg, 16, 16, 1, JCS_GRAYSCALE, false, 0, nullptr, 0);

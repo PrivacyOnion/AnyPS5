@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -444,6 +445,43 @@ void TestDocumentOutlivesContext() {
     xmlFreeDoc_nid_postfix(doc);
 }
 
+void TestFreedDocumentLeavesContext() {
+    const char head[] = "<?xml version=\"1.0\"?><r><a>text</a>";
+    NKWebKit::GuestParserCtxt* ctxt = xmlCreatePushParserCtxt_nid_postfix(nullptr, nullptr, nullptr, 0, "freed.xml");
+    AssertTrue(ctxt != nullptr, "xmlCreatePushParserCtxt returned null");
+    AssertTrue(xmlParseChunk_nid_postfix(ctxt, head, static_cast<int>(std::strlen(head)), 0) == 0, "the first chunk should parse");
+    NKWebKit::GuestDoc* doc = ctxt->myDoc;
+    AssertTrue(doc != nullptr, "the parser should have started a document");
+    xmlFreeDoc_nid_postfix(doc);
+    AssertTrue(ctxt->myDoc == nullptr, "freeing the document should clear the context's document");
+    AssertTrue(xmlCtxtUseOptions_nid_postfix(ctxt, 0) == 0, "the context should stay usable after its document is freed");
+    AssertTrue(ctxt->myDoc == nullptr, "a later call should not bring back the freed document");
+    xmlFreeParserCtxt_nid_postfix(ctxt);
+}
+
+void TestUnknownContexts() {
+    AssertTrue(xmlCtxtGetLastError_nid_postfix(nullptr) == nullptr, "xmlCtxtGetLastError(NULL) should return NULL");
+    xmlSAX2StartDocument_nid_postfix(nullptr);
+    xmlSAX2EndDocument_nid_postfix(nullptr);
+    xmlSAX2InternalSubset_nid_postfix(nullptr, reinterpret_cast<const uint8_t*>("r"), nullptr, nullptr);
+    xmlSAX2EntityDecl_nid_postfix(nullptr, reinterpret_cast<const uint8_t*>("e"), 1, nullptr, nullptr, reinterpret_cast<const uint8_t*>("v"));
+    NKWebKit::GuestParserCtxt stray{};
+    const auto rejects = [](auto call, const char* message) {
+        bool thrown = false;
+        try {
+            call();
+        } catch (const std::invalid_argument&) {
+            thrown = true;
+        }
+        AssertTrue(thrown, message);
+    };
+    rejects([&] { xmlCtxtGetLastError_nid_postfix(&stray); }, "xmlCtxtGetLastError should reject a context it did not create");
+    rejects([&] { xmlSAX2StartDocument_nid_postfix(&stray); }, "xmlSAX2StartDocument should reject a context it did not create");
+    rejects([&] { xmlSAX2EndDocument_nid_postfix(&stray); }, "xmlSAX2EndDocument should reject a context it did not create");
+    rejects([&] { xmlSAX2InternalSubset_nid_postfix(&stray, reinterpret_cast<const uint8_t*>("r"), nullptr, nullptr); }, "xmlSAX2InternalSubset should reject a context it did not create");
+    rejects([&] { xmlSAX2EntityDecl_nid_postfix(&stray, reinterpret_cast<const uint8_t*>("e"), 1, nullptr, nullptr, reinterpret_cast<const uint8_t*>("v")); }, "xmlSAX2EntityDecl should reject a context it did not create");
+}
+
 } // namespace
 
 int main() {
@@ -452,6 +490,8 @@ int main() {
     TestErrorHandling();
     TestMemoryParserAndEntities();
     TestDocumentOutlivesContext();
+    TestFreedDocumentLeavesContext();
+    TestUnknownContexts();
     TestInputHandlersAndOpenContexts();
     TestFailedRegistrations();
     std::printf("Xml tests passed.\n");

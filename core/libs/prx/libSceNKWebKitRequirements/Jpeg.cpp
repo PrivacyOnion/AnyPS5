@@ -101,10 +101,16 @@ static void HostResetErrorMgr(j_common_ptr cinfo) {
     }
 }
 
+static void SyncSourceToGuest(JpegBinding* b, NKWebKit::GuestJpegSourceMgr* gsrc) {
+    gsrc->next_input_byte = b->host_src.next_input_byte;
+    gsrc->bytes_in_buffer = static_cast<std::uint64_t>(b->host_src.bytes_in_buffer);
+}
+
 static void HostInitSource(j_decompress_ptr cinfo) {
     auto* b = static_cast<JpegBinding*>(cinfo->client_data);
     if (!b || !b->guest_cinfo || !b->guest_cinfo->src) return;
     auto* gsrc = b->guest_cinfo->src;
+    SyncSourceToGuest(b, gsrc);
     if (gsrc->init_source) {
         gsrc->init_source(b->guest_cinfo);
     }
@@ -117,6 +123,7 @@ static boolean HostFillInputBuffer(j_decompress_ptr cinfo) {
     if (!b || !b->guest_cinfo || !b->guest_cinfo->src) return FALSE;
     auto* gsrc = b->guest_cinfo->src;
     int32_t ret = 0;
+    SyncSourceToGuest(b, gsrc);
     if (gsrc->fill_input_buffer) {
         ret = gsrc->fill_input_buffer(b->guest_cinfo);
     }
@@ -129,6 +136,7 @@ static void HostSkipInputData(j_decompress_ptr cinfo, long num_bytes) {
     auto* b = static_cast<JpegBinding*>(cinfo->client_data);
     if (!b || !b->guest_cinfo || !b->guest_cinfo->src) return;
     auto* gsrc = b->guest_cinfo->src;
+    SyncSourceToGuest(b, gsrc);
     if (gsrc->skip_input_data) {
         gsrc->skip_input_data(b->guest_cinfo, static_cast<int64_t>(num_bytes));
     }
@@ -143,6 +151,7 @@ static boolean HostResyncToRestart(j_decompress_ptr cinfo, int desired) {
     }
     auto* gsrc = b->guest_cinfo->src;
     if (gsrc->resync_to_restart) {
+        SyncSourceToGuest(b, gsrc);
         int32_t ret = gsrc->resync_to_restart(b->guest_cinfo, desired);
         b->host_src.next_input_byte = gsrc->next_input_byte;
         b->host_src.bytes_in_buffer = static_cast<size_t>(gsrc->bytes_in_buffer);
@@ -155,6 +164,7 @@ static void HostTermSource(j_decompress_ptr cinfo) {
     auto* b = static_cast<JpegBinding*>(cinfo->client_data);
     if (!b || !b->guest_cinfo || !b->guest_cinfo->src) return;
     auto* gsrc = b->guest_cinfo->src;
+    SyncSourceToGuest(b, gsrc);
     if (gsrc->term_source) {
         gsrc->term_source(b->guest_cinfo);
     }
