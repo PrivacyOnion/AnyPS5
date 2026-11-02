@@ -404,6 +404,14 @@ void APS5_VABI jpeg_CreateDecompress_nid_postfix(NKWebKit::GuestJpegDecompress* 
         ForwardError(b.get());
         return;
     }
+    if (structsize != sizeof(NKWebKit::GuestJpegDecompress)) {
+        jpeg_destroy_decompress(&b->host_cinfo);
+        b->host_err.msg_code = JERR_BAD_STRUCT_SIZE;
+        b->host_err.msg_parm.i[0] = static_cast<int>(sizeof(NKWebKit::GuestJpegDecompress));
+        b->host_err.msg_parm.i[1] = static_cast<int>(structsize);
+        ForwardError(b.get());
+        return;
+    }
 
     b->host_cinfo.src = &b->host_src;
     b->host_src.init_source = HostInitSource;

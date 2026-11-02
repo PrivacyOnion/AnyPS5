@@ -1,5 +1,6 @@
 #include "prx/libSceNKWebKitRequirements/libSceNKWebKitRequirements.hpp"
 
+#include <cstddef>
 #include <cstdint>
 #include <stdexcept>
 #include <cstdio>
@@ -231,10 +232,37 @@ void TestProgressiveBuffered(const std::vector<uint8_t>& jpegData) {
 
 int g_errorExitCalls = 0;
 int g_errorExitCode = -1;
+int g_errorExitParms[2] = {-1, -1};
 
 void APS5_VABI RecordingErrorExit(NKWebKit::GuestCommonPtr cinfo) {
     ++g_errorExitCalls;
     g_errorExitCode = cinfo->err->msg_code;
+    g_errorExitParms[0] = cinfo->err->msg_parm.i[0];
+    g_errorExitParms[1] = cinfo->err->msg_parm.i[1];
+}
+
+void TestBadStructSize() {
+    NKWebKit::GuestJpegErrorMgr jerr{};
+    jpeg_std_error_nid_postfix(&jerr);
+    jerr.error_exit = RecordingErrorExit;
+    NKWebKit::GuestJpegDecompress guest_cinfo{};
+    guest_cinfo.err = &jerr;
+    g_errorExitCalls = 0;
+    const std::size_t wrong = sizeof(NKWebKit::GuestJpegDecompress) - 8;
+    jpeg_CreateDecompress_nid_postfix(&guest_cinfo, 62, wrong);
+    AssertTrue(g_errorExitCalls == 1, "a wrong structsize should call the guest error_exit once");
+    AssertTrue(g_errorExitCode == JERR_BAD_STRUCT_SIZE, "a wrong structsize should raise JERR_BAD_STRUCT_SIZE");
+    AssertTrue(g_errorExitParms[0] == static_cast<int>(sizeof(NKWebKit::GuestJpegDecompress)), "JERR_BAD_STRUCT_SIZE should report the expected size first");
+    AssertTrue(g_errorExitParms[1] == static_cast<int>(wrong), "JERR_BAD_STRUCT_SIZE should report the passed size second");
+    bool rejected = false;
+    try {
+        jpeg_read_header_nid_postfix(&guest_cinfo, 1);
+    } catch (const std::invalid_argument&) {
+        rejected = true;
+    }
+    AssertTrue(rejected, "an object whose creation failed should not be usable");
+    jpeg_destroy_decompress_nid_postfix(&guest_cinfo);
+    g_errorExitCalls = 0;
 }
 
 void TestGuestErrorExit() {
@@ -296,6 +324,7 @@ void TestDefaultErrorExitThrows() {
 } // namespace
 
 int main() {
+    TestBadStructSize();
     TestGuestErrorExit();
     TestDefaultErrorExitThrows();
     std::vector<uint8_t> baselineJpeg;
