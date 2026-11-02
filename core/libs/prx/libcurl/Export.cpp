@@ -115,14 +115,14 @@ auto CallGuest(CallbackSlot& slot, A... args) {
 
 size_t Write(char* buffer, size_t size, size_t count, void* opaque) {
     auto& slot = static_cast<EasyContext*>(opaque)->slots[1];
-    return slot.function ? CallGuest<curl_write_callback>(slot, buffer, size, count, slot.data)
-        : fwrite_nid_postfix(buffer, size, count, static_cast<FileStream*>(slot.data));
+    if (slot.function) return CallGuest<curl_write_callback>(slot, buffer, size, count, slot.data);
+    return slot.data ? fwrite_nid_postfix(buffer, size, count, static_cast<FileStream*>(slot.data)) : 0;
 }
 
 size_t Read(char* buffer, size_t size, size_t count, void* opaque) {
     auto& slot = static_cast<EasyContext*>(opaque)->slots[9];
-    return slot.function ? CallGuest<curl_read_callback>(slot, buffer, size, count, slot.data)
-        : fread_nid_postfix(buffer, size, count, static_cast<FileStream*>(slot.data));
+    if (slot.function) return CallGuest<curl_read_callback>(slot, buffer, size, count, slot.data);
+    return slot.data ? fread_nid_postfix(buffer, size, count, static_cast<FileStream*>(slot.data)) : CURL_READFUNC_ABORT;
 }
 
 size_t Header(char* buffer, size_t size, size_t count, void* opaque) {
@@ -193,6 +193,7 @@ curlioerr Ioctl(CURL* easy, int command, void* opaque) {
 
 int DefaultSeek(void* opaque, curl_off_t offset, int origin) {
     auto* context = static_cast<EasyContext*>(opaque);
+    if (!context->slots[9].data) return CURL_SEEKFUNC_CANTSEEK;
     if (fseek_nid_postfix(static_cast<FileStream*>(context->slots[9].data), offset, origin) == -1)
         return CURL_SEEKFUNC_CANTSEEK;
     return CURL_SEEKFUNC_OK;

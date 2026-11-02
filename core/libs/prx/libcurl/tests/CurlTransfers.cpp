@@ -238,6 +238,12 @@ int main() {
     Require(std::string(std::istreambuf_iterator<char>(defaultUploaded), {}) == bytes);
     defaultUploaded.close();
     std::fclose(inputFile);
+    Require(curl_easy_setopt_nid_postfix(duplicate, CURLOPT_READDATA, nullptr) == CURLE_OK);
+    Require(curl_easy_perform_nid_postfix(duplicate) == CURLE_ABORTED_BY_CALLBACK);
+    curl_easy_reset_nid_postfix(duplicate);
+    Require(curl_easy_setopt_nid_postfix(duplicate, CURLOPT_URL, url.c_str()) == CURLE_OK);
+    Require(curl_easy_setopt_nid_postfix(duplicate, CURLOPT_WRITEDATA, nullptr) == CURLE_OK);
+    Require(curl_easy_perform_nid_postfix(duplicate) == CURLE_WRITE_ERROR);
     curl_easy_reset_nid_postfix(duplicate);
     output.clear();
     headers.clear();
