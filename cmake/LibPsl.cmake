@@ -3,7 +3,7 @@ function(add_bundled_libpsl)
         return()
     endif()
 
-    find_package(Python3 COMPONENTS Interpreter REQUIRED)
+    find_package(Python3 COMPONENTS Interpreter QUIET)
 
     set(PSL_SOURCE_DIR ${CMAKE_SOURCE_DIR}/3rdparty/libpsl)
     set(PSL_BINARY_DIR ${CMAKE_BINARY_DIR}/3rdparty/libpsl)
@@ -12,9 +12,15 @@ function(add_bundled_libpsl)
     set(PSL_LIST_FILE ${PSL_SOURCE_DIR}/list/public_suffix_list.dat)
     set(PSL_DAFSA_HEADER ${PSL_BINARY_DIR}/suffixes_dafsa.h)
 
+    if(Python3_FOUND)
+        set(PSL_DAFSA_COMMAND ${Python3_EXECUTABLE} ${PSL_SOURCE_DIR}/src/psl-make-dafsa --output-format=cxx+ ${PSL_LIST_FILE} ${PSL_DAFSA_HEADER})
+    else()
+        set(PSL_DAFSA_COMMAND ${CMAKE_COMMAND} -E echo "libpsl: generating the built-in suffix table needs a Python 3 interpreter (set Python3_EXECUTABLE)" COMMAND ${CMAKE_COMMAND} -E false)
+    endif()
+
     add_custom_command(
         OUTPUT ${PSL_DAFSA_HEADER}
-        COMMAND ${Python3_EXECUTABLE} ${PSL_SOURCE_DIR}/src/psl-make-dafsa --output-format=cxx+ ${PSL_LIST_FILE} ${PSL_DAFSA_HEADER}
+        COMMAND ${PSL_DAFSA_COMMAND}
         DEPENDS ${PSL_SOURCE_DIR}/src/psl-make-dafsa ${PSL_LIST_FILE}
         VERBATIM
     )

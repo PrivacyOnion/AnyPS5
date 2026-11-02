@@ -459,6 +459,16 @@ void TestFreedDocumentLeavesContext() {
     xmlFreeParserCtxt_nid_postfix(ctxt);
 }
 
+void TestGuestCharsetReachesHost() {
+    NKWebKit::GuestParserCtxt* ctxt = xmlCreatePushParserCtxt_nid_postfix(nullptr, nullptr, nullptr, 0, "charset.xml");
+    AssertTrue(ctxt != nullptr, "xmlCreatePushParserCtxt returned null");
+    const auto changed = ctxt->charset == 1 ? 2 : 1;
+    ctxt->charset = changed;
+    AssertTrue(xmlCtxtUseOptions_nid_postfix(ctxt, 0) == 0, "xmlCtxtUseOptions failed");
+    AssertTrue(ctxt->charset == changed, "a guest charset should reach the host context and survive the next sync");
+    xmlFreeParserCtxt_nid_postfix(ctxt);
+}
+
 void TestUnknownContexts() {
     AssertTrue(xmlCtxtGetLastError_nid_postfix(nullptr) == nullptr, "xmlCtxtGetLastError(NULL) should return NULL");
     xmlSAX2StartDocument_nid_postfix(nullptr);
@@ -491,6 +501,7 @@ int main() {
     TestMemoryParserAndEntities();
     TestDocumentOutlivesContext();
     TestFreedDocumentLeavesContext();
+    TestGuestCharsetReachesHost();
     TestUnknownContexts();
     TestInputHandlersAndOpenContexts();
     TestFailedRegistrations();

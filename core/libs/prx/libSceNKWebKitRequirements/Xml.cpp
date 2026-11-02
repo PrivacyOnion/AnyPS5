@@ -238,7 +238,7 @@ static void SyncGuestToHost(XmlBinding* b) {
     h->spaceMax = g->spaceMax;
     h->spaceTab = g->spaceTab;
     h->depth = g->depth;
-    h->charset = h->charset;
+    h->charset = g->charset;
     h->nodelen = g->nodelen;
     h->nodemem = g->nodemem;
     h->pedantic = g->pedantic;
