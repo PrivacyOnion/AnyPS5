@@ -42,6 +42,8 @@ static std::mutex g_xmlMutex;
 static std::unordered_map<NKWebKit::GuestParserCtxt*, std::unique_ptr<XmlBinding>> g_xmlBindings;
 static std::unordered_map<const NKWebKit::GuestDoc*, xmlDocPtr> g_docMap;
 static std::unordered_map<xmlDocPtr, std::unique_ptr<NKWebKit::GuestDoc>> g_guestDocs;
+static std::unordered_map<xmlEntityPtr, std::unique_ptr<NKWebKit::GuestEntity>> g_globalEntities;
+static std::unordered_map<xmlDocPtr, std::unordered_map<xmlEntityPtr, std::unique_ptr<NKWebKit::GuestEntity>>> g_docEntities;
 
 constexpr std::size_t XmlInputSlotCount = 15;
 constexpr std::size_t XmlOutputSlotCount = 15;
@@ -247,27 +249,35 @@ static void SyncGuestToHost(XmlBinding* b) {
 
 static NKWebKit::GuestEntity* SyncHostEntityToGuest(xmlEntityPtr h) {
     if (!h) return nullptr;
-    static thread_local NKWebKit::GuestEntity s_guestEntity{};
-    s_guestEntity._private = h->_private;
-    s_guestEntity.type = static_cast<int32_t>(h->type);
-    s_guestEntity.name = h->name;
-    s_guestEntity.children = h->children;
-    s_guestEntity.last = h->last;
-    s_guestEntity.parent = h->parent;
-    s_guestEntity.next = h->next;
-    s_guestEntity.prev = h->prev;
-    s_guestEntity.doc = nullptr;
-    s_guestEntity.orig = h->orig;
-    s_guestEntity.content = h->content;
-    s_guestEntity.length = h->length;
-    s_guestEntity.etype = static_cast<int32_t>(h->etype);
-    s_guestEntity.ExternalID = h->ExternalID;
-    s_guestEntity.SystemID = h->SystemID;
-    s_guestEntity.nexte = nullptr;
-    s_guestEntity.URI = h->URI;
-    s_guestEntity.owner = h->owner;
-    s_guestEntity.checked = h->checked;
-    return &s_guestEntity;
+    NKWebKit::GuestDoc* owner = nullptr;
+    if (h->doc) {
+        owner = GuestDocFor(h->doc);
+        SyncHostDocToGuest(h->doc, owner);
+    }
+    std::lock_guard<std::mutex> lock(g_xmlMutex);
+    auto& mirror = h->doc ? g_docEntities[h->doc][h] : g_globalEntities[h];
+    if (!mirror) mirror = std::make_unique<NKWebKit::GuestEntity>();
+    auto* g = mirror.get();
+    g->_private = h->_private;
+    g->type = static_cast<int32_t>(h->type);
+    g->name = h->name;
+    g->children = h->children;
+    g->last = h->last;
+    g->parent = h->parent;
+    g->next = h->next;
+    g->prev = h->prev;
+    g->doc = owner;
+    g->orig = h->orig;
+    g->content = h->content;
+    g->length = h->length;
+    g->etype = static_cast<int32_t>(h->etype);
+    g->ExternalID = h->ExternalID;
+    g->SystemID = h->SystemID;
+    g->nexte = nullptr;
+    g->URI = h->URI;
+    g->owner = h->owner;
+    g->checked = h->checked;
+    return g;
 }
 
 static void HostStartElementNs(void* ctx, const xmlChar* localname, const xmlChar* prefix, const xmlChar* URI, int nb_namespaces, const xmlChar** namespaces, int nb_attributes, int nb_defaulted, const xmlChar** attributes) {
@@ -696,6 +706,7 @@ void APS5_VABI xmlFreeDoc_nid_postfix(NKWebKit::GuestDoc* cur) {
                 guest_doc = std::move(owned->second);
                 g_guestDocs.erase(owned);
             }
+            g_docEntities.erase(host_doc);
             for (auto& binding : g_xmlBindings) {
                 if (binding.second->host_ctxt && binding.second->host_ctxt->myDoc == host_doc) {
                     binding.second->host_ctxt->myDoc = nullptr;

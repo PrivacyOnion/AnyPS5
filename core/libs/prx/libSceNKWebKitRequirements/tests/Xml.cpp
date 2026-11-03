@@ -445,6 +445,32 @@ void TestDocumentOutlivesContext() {
     xmlFreeDoc_nid_postfix(doc);
 }
 
+void TestEntityResultsStayDistinct() {
+    NKWebKit::GuestEntity* amp = xmlGetPredefinedEntity_nid_postfix(reinterpret_cast<const uint8_t*>("amp"));
+    NKWebKit::GuestEntity* lt = xmlGetPredefinedEntity_nid_postfix(reinterpret_cast<const uint8_t*>("lt"));
+    AssertTrue(amp != nullptr && lt != nullptr && amp != lt, "two predefined entities should have their own guest entities");
+    AssertTrue(std::strcmp(reinterpret_cast<const char*>(amp->name), "amp") == 0 && std::strcmp(reinterpret_cast<const char*>(amp->content), "&") == 0, "the first predefined entity should keep its fields after a second lookup");
+    AssertTrue(std::strcmp(reinterpret_cast<const char*>(lt->name), "lt") == 0 && std::strcmp(reinterpret_cast<const char*>(lt->content), "<") == 0, "the second predefined entity fields mismatch");
+    AssertTrue(xmlGetPredefinedEntity_nid_postfix(reinterpret_cast<const uint8_t*>("amp")) == amp, "a repeated lookup should return the same guest entity");
+    AssertTrue(amp->doc == nullptr, "a predefined entity has no document");
+
+    const char docXml[] = "<!DOCTYPE r [<!ENTITY first \"one\"><!ENTITY second \"two\">]><r/>";
+    NKWebKit::GuestParserCtxt* ctxt = xmlCreatePushParserCtxt_nid_postfix(nullptr, nullptr, nullptr, 0, "entities.xml");
+    AssertTrue(ctxt != nullptr, "xmlCreatePushParserCtxt returned null");
+    AssertTrue(xmlParseChunk_nid_postfix(ctxt, docXml, static_cast<int>(std::strlen(docXml)), 1) == 0, "the document should parse");
+    NKWebKit::GuestDoc* doc = ctxt->myDoc;
+    AssertTrue(doc != nullptr, "the parser should build a document");
+    ctxt->myDoc = nullptr;
+    xmlFreeParserCtxt_nid_postfix(ctxt);
+    NKWebKit::GuestEntity* first = xmlGetDocEntity_nid_postfix(doc, reinterpret_cast<const uint8_t*>("first"));
+    NKWebKit::GuestEntity* second = xmlGetDocEntity_nid_postfix(doc, reinterpret_cast<const uint8_t*>("second"));
+    AssertTrue(first != nullptr && second != nullptr && first != second, "two document entities should have their own guest entities");
+    AssertTrue(std::strcmp(reinterpret_cast<const char*>(first->content), "one") == 0 && std::strcmp(reinterpret_cast<const char*>(second->content), "two") == 0, "a document entity should keep its fields after a second lookup");
+    AssertTrue(first->doc == doc && second->doc == doc, "a document entity should point to its owning document");
+    AssertTrue(xmlGetDocEntity_nid_postfix(doc, reinterpret_cast<const uint8_t*>("first")) == first, "a repeated document lookup should return the same guest entity");
+    xmlFreeDoc_nid_postfix(doc);
+}
+
 void TestFreedDocumentLeavesContext() {
     const char head[] = "<?xml version=\"1.0\"?><r><a>text</a>";
     NKWebKit::GuestParserCtxt* ctxt = xmlCreatePushParserCtxt_nid_postfix(nullptr, nullptr, nullptr, 0, "freed.xml");
@@ -501,6 +527,7 @@ int main() {
     TestMemoryParserAndEntities();
     TestDocumentOutlivesContext();
     TestFreedDocumentLeavesContext();
+    TestEntityResultsStayDistinct();
     TestGuestCharsetReachesHost();
     TestUnknownContexts();
     TestInputHandlersAndOpenContexts();
