@@ -15,6 +15,7 @@
 #include <iostream>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -318,7 +319,7 @@ void MovedRecordCountsReachEveryDescriptor(bool sharedCount) {
     }
 }
 
-void RuntimeValuesReachCachedDraws() {
+void RuntimeValuesReachCachedDraws(bool expectReuse = true) {
     Registered(VertexHeader, VertexCode.data(), sizeof(VertexCode), 2);
     Registered(RuntimeHeader, RuntimePixelCode.data(), sizeof(RuntimePixelCode), 1);
     alignas(16) static std::array<float, 4> source{1.0f, 0.0f, 0.0f, 0.0f};
@@ -334,7 +335,7 @@ void RuntimeValuesReachCachedDraws() {
         const auto pixel = DrawWithUserData(RuntimePixelCode.data(), words(green));
         Require(pixel == std::array<std::uint8_t, 4>{255, expected, 0, 255}, "a changed runtime uniform did not reach the cached draw");
         const auto after = Driver::Get().DrawCacheCounters();
-        Require(after.hits > before.hits, "a changed runtime uniform rebuilt the draw instead of reusing it");
+        if (expectReuse) Require(after.hits > before.hits, "a changed runtime uniform rebuilt the draw instead of reusing it");
     }
 }
 
@@ -348,8 +349,18 @@ void BufferValueWordsKeyByNothing() {
 
 }
 
-int main() {
+int main(int argc, char** argv) {
     try {
+        if (argc > 1) {
+            {
+                const auto device = OpenVulkanTestDevice();
+                if (!device) return VulkanTestSkipped;
+            }
+            RuntimeValuesReachCachedDraws(std::string_view(argv[1]) != "--runtime-reference");
+            AgcDriverShutdown_nid_postfix();
+            std::cout << "runtime user data pixels checked\n";
+            return 0;
+        }
         CalleeWordsAreKeyedByTheirCode();
         BufferValueWordsArePatchedInTheirBinding();
         BufferValueWordsKeyByNothing();
