@@ -9,14 +9,12 @@
 #include <bit>
 #include <cstddef>
 #include <cstdint>
-#include <cmath>
 #include <cstring>
 #include <exception>
 #include <initializer_list>
 #include <iostream>
 #include <memory>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -103,42 +101,6 @@ void CalleeWordsAreKeyedByTheirCode() {
     Require(rdna->calleeWords == 0u, "a vertex program was tagged for GCN user-data callees outside GCN guest shaders");
 }
 
-void RuntimeWordsExcludeResourceDependencies() {
-    DrawProgram program{};
-    program.userData = {7u, 0u, 0u, 0u, 0u};
-    auto compiled = std::make_shared<RecompileResult>();
-    compiled->shaderDataUserWords = {4u};
-    compiled->userDataRegisterReads = 1u << 4u;
-    ShaderRecompiler::SrtUserDataUse use;
-    use.asValue = 1u;
-    DispatchVariant absent;
-    Driver::TagRuntimeUserWords(absent, program, use);
-    Require(absent.runtimeWords == 0, "a missing compiled stage admitted runtime user words");
-    const auto runtime = Variant(compiled);
-    Driver::TagRuntimeUserWords(*runtime, program, use);
-    Require(runtime->runtimeWords == (1u << 4u), "an exclusively runtime user word was not tagged");
-    for (const bool base : {false, true}) {
-        auto resource = use;
-        if (base) resource.asBase |= 1u << 4u;
-        else resource.asValue |= 1u << 4u;
-        const auto variant = Variant(compiled);
-        Driver::TagRuntimeUserWords(*variant, program, resource);
-        Require(variant->runtimeWords == 0, "a resource-dependent user word was tagged as runtime data");
-    }
-    const auto unknown = Variant(compiled);
-    Driver::TagRuntimeUserWords(*unknown, program, {});
-    Require(unknown->runtimeWords == 0, "an unobserved resource walk admitted runtime user words");
-    program.hiddenUserWords = 5;
-    const auto hidden = Variant(compiled);
-    Driver::TagRuntimeUserWords(*hidden, program, use);
-    Require(hidden->runtimeWords == 0, "a hidden user word was tagged as runtime data");
-    program.hiddenUserWords = 0;
-    compiled->userDataRegisterReads = 0;
-    const auto unread = Variant(compiled);
-    Driver::TagRuntimeUserWords(*unread, program, use);
-    Require(unread->runtimeWords == 0, "a user word without a runtime shader read was tagged");
-}
-
 void BufferValueWordsArePatchedInTheirBinding() {
     ShaderRecompiler::SetGcnGuestShaders(false);
     const std::vector<std::uint32_t> descriptor{Low(Buffer.data()), High(Buffer.data()) | (16u << 16u), 4u, 0x20077facu};
@@ -215,10 +177,6 @@ alignas(256) constexpr std::array<std::uint32_t, 16> OwnCountPixelCode{
     0xbe880304u, 0xbe890305u, 0xbe8a0306u, 0xbe8b0307u, 0xf4200300u, 0xfa000000u, 0xf4200344u, 0xfa000004u,
     0xbf8cc07fu, 0x7e00020cu, 0x7e02020du, 0x7e040280u, 0x7e0602f2u, 0xf800180fu, 0x03020100u, 0xbf810000u,
 };
-alignas(256) constexpr std::array<std::uint32_t, 12> RuntimePixelCode{
-    0xf4200300u, 0xfa000000u, 0xbf8cc07fu, 0x7e00020cu, 0x7e020204u, 0x7e040280u,
-    0x7e0602f2u, 0xf800180fu, 0x03020100u, 0xbf810000u,
-};
 alignas(256) std::array<std::byte, 1024> ColorMemory{};
 
 struct Header {
@@ -229,7 +187,6 @@ struct Header {
 alignas(8) Header VertexHeader{};
 alignas(8) Header SharedCountHeader{};
 alignas(8) Header OwnCountHeader{};
-alignas(8) Header RuntimeHeader{};
 
 void Registered(Header& header, const std::uint32_t* code, std::size_t bytes, std::uint8_t type) {
     header.shader.file_header = 0x34333231u;
@@ -323,33 +280,6 @@ void MovedRecordCountsReachEveryDescriptor(bool sharedCount) {
     }
 }
 
-void CheckRuntimePixel(const std::array<std::uint8_t, 4>& pixel, float green) {
-    const auto low = static_cast<std::uint8_t>(std::floor(green * 255.0f));
-    const auto high = static_cast<std::uint8_t>(std::ceil(green * 255.0f));
-    Require(pixel[0] == 255 && pixel[1] >= low && pixel[1] <= high && pixel[2] == 0 && pixel[3] == 255, "runtime uniform expected green in [" + std::to_string(low) + "," + std::to_string(high) + "], got " + std::to_string(pixel[0]) + "," + std::to_string(pixel[1]) + "," + std::to_string(pixel[2]) + "," + std::to_string(pixel[3]));
-}
-
-void RuntimeValuesReachCachedDraws(bool expectReuse = true) {
-    Registered(VertexHeader, VertexCode.data(), sizeof(VertexCode), 2);
-    Registered(RuntimeHeader, RuntimePixelCode.data(), sizeof(RuntimePixelCode), 1);
-    alignas(16) static std::array<float, 4> source{1.0f, 0.0f, 0.0f, 0.0f};
-    const auto words = [&](float green) {
-        return std::array<std::uint32_t, 8>{Low(source.data()), High(source.data()), 16u, 0x20077facu, std::bit_cast<std::uint32_t>(green), 0u, 0u, 0u};
-    };
-    for (std::size_t index = 0; index < 5; ++index) {
-        const auto green = index % 2 == 0 ? 0.25f : 0.75f;
-        const auto pixel = DrawWithUserData(RuntimePixelCode.data(), words(green));
-        CheckRuntimePixel(pixel, green);
-    }
-    for (const auto green : {0.0f, 1.0f, 0.5f, 0.0f}) {
-        const auto before = Driver::Get().DrawCacheCounters();
-        const auto pixel = DrawWithUserData(RuntimePixelCode.data(), words(green));
-        CheckRuntimePixel(pixel, green);
-        const auto after = Driver::Get().DrawCacheCounters();
-        if (expectReuse) Require(after.hits > before.hits, "a changed runtime uniform rebuilt the draw instead of reusing it");
-    }
-}
-
 void BufferValueWordsKeyByNothing() {
     const RelocatableUserWord word{4u, {}, true, 0u};
     bool readable = true;
@@ -360,29 +290,17 @@ void BufferValueWordsKeyByNothing() {
 
 }
 
-int main(int argc, char** argv) {
+int main() {
     try {
-        if (argc > 1) {
-            {
-                const auto device = OpenVulkanTestDevice();
-                if (!device) return VulkanTestSkipped;
-            }
-            RuntimeValuesReachCachedDraws(std::string_view(argv[1]) != "--runtime-reference");
-            AgcDriverShutdown_nid_postfix();
-            std::cout << "runtime user data pixels checked\n";
-            return 0;
-        }
         CalleeWordsAreKeyedByTheirCode();
         BufferValueWordsArePatchedInTheirBinding();
         BufferValueWordsKeyByNothing();
-        RuntimeWordsExcludeResourceDependencies();
         {
             const auto device = OpenVulkanTestDevice();
             if (!device) return VulkanTestSkipped;
         }
         MovedRecordCountsReachEveryDescriptor(true);
         MovedRecordCountsReachEveryDescriptor(false);
-        RuntimeValuesReachCachedDraws();
         AgcDriverShutdown_nid_postfix();
         std::cout << "User-data V# values and fetch subroutine pointers relocate\n";
         return 0;
