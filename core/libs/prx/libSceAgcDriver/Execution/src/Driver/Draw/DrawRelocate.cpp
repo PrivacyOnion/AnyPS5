@@ -135,6 +135,17 @@ void Driver::tagUserValueWords(DispatchVariant& variant, const DrawProgram& prog
     }
 }
 
+void Driver::TagRuntimeUserWords(DispatchVariant& variant, const DrawProgram& program, const ShaderRecompiler::SrtUserDataUse& use) {
+    if (!drawRelocationEnabled() || variant.compiled == nullptr || (use.asBase | use.asValue) == 0) return;
+    const auto& compiled = *variant.compiled;
+    const auto used = use.asBase | use.asValue | variant.relocatableWords | variant.valueWords | variant.calleeWords;
+    for (const auto index : compiled.shaderDataUserWords) {
+        if (index < program.hiddenUserWords || index >= program.userData.size() || index >= 64) continue;
+        const auto bit = std::uint64_t{1} << index;
+        if ((used & bit) == 0 && (compiled.userDataRegisterReads & bit) != 0) variant.runtimeWords |= bit;
+    }
+}
+
 void Driver::tagVariantRuns(DispatchVariant& variant, std::span<const ShaderRecompiler::MemoryRegion> regions, const ShaderRecompiler::SrtUserDataUse& use, bool eligible, std::uint32_t hiddenWords, std::span<const std::shared_ptr<const ShaderRecompiler::SrtGuestWords>> supplied) {
     std::uint64_t relocatable = eligible && drawRelocationEnabled() ? use.asBase & ~use.asValue : 0;
     if (hiddenWords != 0) relocatable &= hiddenWords >= 64 ? 0 : ~((std::uint64_t {1} << hiddenWords) - 1);
@@ -229,7 +240,7 @@ void Driver::learnPendingRelocation() {
             const auto reg = program.userDataBase + index - program.hiddenUserWords;
             const auto held = std::find_if(shape->words.begin(), shape->words.end(), [&](const RelocatableUserWord& word) { return word.reg == reg; });
             const bool relocatable = (variant.relocatableWords >> index & 1u) != 0;
-            const bool value = !relocatable && (variant.valueWords >> index & 1u) != 0;
+            const bool value = !relocatable && ((variant.valueWords | variant.runtimeWords) >> index & 1u) != 0;
             if (!relocatable && !value && (variant.calleeWords >> index & 1u) == 0) {
                 if (held == shape->words.end()) continue;
                 shape->words.erase(held);
@@ -302,7 +313,7 @@ void Driver::relocateDrawEntry(const QueueState& queue, std::uint64_t alias, std
         }
         for (const auto& variant : donor->stages[i]) {
             if (variant == nullptr || variant->compiled == nullptr) continue;
-            const bool allowed = std::all_of(moves.begin(), moves.end(), [&](const Move& move) { return move.program != i || (move.index < 64 && move.from != 0 && move.to != 0 && ((((variant->relocatableWords | variant->calleeWords) >> move.index & 1u) != 0 && ((move.from ^ move.to) & 3u) == 0) || (variant->valueWords >> move.index & 1u) != 0)); });
+            const bool allowed = std::all_of(moves.begin(), moves.end(), [&](const Move& move) { return move.program != i || (move.index < 64 && (((variant->runtimeWords >> move.index) & 1u) != 0 || (move.from != 0 && move.to != 0 && ((((variant->relocatableWords | variant->calleeWords) >> move.index & 1u) != 0 && ((move.from ^ move.to) & 3u) == 0) || (variant->valueWords >> move.index & 1u) != 0)))); });
             if (!allowed) {
                 ++counters.refused;
                 continue;
@@ -312,6 +323,7 @@ void Driver::relocateDrawEntry(const QueueState& queue, std::uint64_t alias, std
             copy->runBases = variant->runBases;
             copy->relocatableWords = variant->relocatableWords;
             copy->valueWords = variant->valueWords;
+            copy->runtimeWords = variant->runtimeWords;
             copy->valueSlots = variant->valueSlots;
             copy->calleeWords = variant->calleeWords;
             copy->calleeReads = variant->calleeReads;
@@ -319,6 +331,8 @@ void Driver::relocateDrawEntry(const QueueState& queue, std::uint64_t alias, std
             copy->words = variant->words;
             copy->forgetSerial = variant->forgetSerial;
             copy->compiled = variant->compiled;
+            copy->registeredViews = variant->registeredViews;
+            copy->userDataMask = variant->userDataMask;
             copy->meshIndexDescriptor = variant->meshIndexDescriptor;
             copy->shader = variant->shader;
             copy->dataPositions = variant->dataPositions;

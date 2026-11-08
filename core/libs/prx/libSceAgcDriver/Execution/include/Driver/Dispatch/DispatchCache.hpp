@@ -65,6 +65,7 @@ struct DispatchVariant {
     std::vector<std::int8_t> runBases;
     std::uint64_t relocatableWords = 0;
     std::uint64_t valueWords = 0;
+    std::uint64_t runtimeWords = 0;
     std::vector<std::array<std::uint32_t, 3>> valueSlots;
     std::vector<std::array<std::uint32_t, 3>> descriptorPatches;
     std::uint64_t calleeWords = 0;
