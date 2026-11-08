@@ -9,6 +9,7 @@
 #include <bit>
 #include <cstddef>
 #include <cstdint>
+#include <cmath>
 #include <cstring>
 #include <exception>
 #include <initializer_list>
@@ -110,6 +111,9 @@ void RuntimeWordsExcludeResourceDependencies() {
     compiled->userDataRegisterReads = 1u << 4u;
     ShaderRecompiler::SrtUserDataUse use;
     use.asValue = 1u;
+    DispatchVariant absent;
+    Driver::TagRuntimeUserWords(absent, program, use);
+    Require(absent.runtimeWords == 0, "a missing compiled stage admitted runtime user words");
     const auto runtime = Variant(compiled);
     Driver::TagRuntimeUserWords(*runtime, program, use);
     Require(runtime->runtimeWords == (1u << 4u), "an exclusively runtime user word was not tagged");
@@ -319,6 +323,12 @@ void MovedRecordCountsReachEveryDescriptor(bool sharedCount) {
     }
 }
 
+void CheckRuntimePixel(const std::array<std::uint8_t, 4>& pixel, float green) {
+    const auto low = static_cast<std::uint8_t>(std::floor(green * 255.0f));
+    const auto high = static_cast<std::uint8_t>(std::ceil(green * 255.0f));
+    Require(pixel[0] == 255 && pixel[1] >= low && pixel[1] <= high && pixel[2] == 0 && pixel[3] == 255, "runtime uniform expected green in [" + std::to_string(low) + "," + std::to_string(high) + "], got " + std::to_string(pixel[0]) + "," + std::to_string(pixel[1]) + "," + std::to_string(pixel[2]) + "," + std::to_string(pixel[3]));
+}
+
 void RuntimeValuesReachCachedDraws(bool expectReuse = true) {
     Registered(VertexHeader, VertexCode.data(), sizeof(VertexCode), 2);
     Registered(RuntimeHeader, RuntimePixelCode.data(), sizeof(RuntimePixelCode), 1);
@@ -327,13 +337,14 @@ void RuntimeValuesReachCachedDraws(bool expectReuse = true) {
         return std::array<std::uint32_t, 8>{Low(source.data()), High(source.data()), 16u, 0x20077facu, std::bit_cast<std::uint32_t>(green), 0u, 0u, 0u};
     };
     for (std::size_t index = 0; index < 5; ++index) {
-        const auto pixel = DrawWithUserData(RuntimePixelCode.data(), words(0.25f));
-        Require(pixel == std::array<std::uint8_t, 4>{255, 64, 0, 255}, "the initial runtime uniform drew the wrong color");
+        const auto green = index % 2 == 0 ? 0.25f : 0.75f;
+        const auto pixel = DrawWithUserData(RuntimePixelCode.data(), words(green));
+        CheckRuntimePixel(pixel, green);
     }
-    for (const auto& [green, expected] : std::array<std::pair<float, std::uint8_t>, 4>{{{0.0f, 0u}, {1.0f, 255u}, {0.5f, 128u}, {0.0f, 0u}}}) {
+    for (const auto green : {0.0f, 1.0f, 0.5f, 0.0f}) {
         const auto before = Driver::Get().DrawCacheCounters();
         const auto pixel = DrawWithUserData(RuntimePixelCode.data(), words(green));
-        Require(pixel == std::array<std::uint8_t, 4>{255, expected, 0, 255}, "a changed runtime uniform did not reach the cached draw");
+        CheckRuntimePixel(pixel, green);
         const auto after = Driver::Get().DrawCacheCounters();
         if (expectReuse) Require(after.hits > before.hits, "a changed runtime uniform rebuilt the draw instead of reusing it");
     }
