@@ -136,7 +136,7 @@ void Driver::tagUserValueWords(DispatchVariant& variant, const DrawProgram& prog
 }
 
 void Driver::TagRuntimeUserWords(DispatchVariant& variant, const DrawProgram& program, const ShaderRecompiler::SrtUserDataUse& use) {
-    if (!drawRelocationEnabled() || variant.compiled == nullptr || (use.asBase | use.asValue) == 0) return;
+    if (!drawRelocationEnabled() || variant.compiled == nullptr || (use.asBase | use.asValue) == 0 || (variant.registeredViews != nullptr && !variant.registeredViews->empty())) return;
     const auto& compiled = *variant.compiled;
     const auto used = use.asBase | use.asValue | variant.relocatableWords | variant.valueWords | variant.calleeWords;
     for (const auto index : compiled.shaderDataUserWords) {
@@ -331,8 +331,6 @@ void Driver::relocateDrawEntry(const QueueState& queue, std::uint64_t alias, std
             copy->words = variant->words;
             copy->forgetSerial = variant->forgetSerial;
             copy->compiled = variant->compiled;
-            copy->registeredViews = variant->registeredViews;
-            copy->userDataMask = variant->userDataMask;
             copy->meshIndexDescriptor = variant->meshIndexDescriptor;
             copy->shader = variant->shader;
             copy->dataPositions = variant->dataPositions;
