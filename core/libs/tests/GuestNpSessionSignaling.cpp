@@ -51,6 +51,9 @@ int main() {
     Require(sceNpSessionSignalingInitialize(reinterpret_cast<const SessionSignalingInitParam*>(initializeParam)) == 0, "initialize failed");
     SessionSignalingMemoryInfo memoryInfo{};
     Require(sceNpSessionSignalingGetMemoryInfo(nullptr) == InvalidArgument, "null memory info");
+    errno = 71;
+    Require(sceNpSessionSignalingGetMemoryInfo(reinterpret_cast<SessionSignalingMemoryInfo*>(0x10)) == InvalidArgument, "unmapped memory info");
+    Require(errno == 71, "memory info preserves errno");
     Require(sceNpSessionSignalingGetMemoryInfo(&memoryInfo) == 0, "memory info failed");
     Require(memoryInfo.poolSize == poolSize && memoryInfo.usedSize == 0 && memoryInfo.peakUsedSize == 0, "memory info contents");
     SessionSignalingConnectionStatistics statistics{};
@@ -59,6 +62,9 @@ int main() {
     statistics.connectingCount = 1;
     statistics.connectedCount = 1;
     Require(sceNpSessionSignalingGetConnectionStatistics(nullptr) == InvalidArgument, "null statistics");
+    errno = 71;
+    Require(sceNpSessionSignalingGetConnectionStatistics(reinterpret_cast<SessionSignalingConnectionStatistics*>(0x10)) == InvalidArgument, "unmapped statistics");
+    Require(errno == 71, "statistics preserve errno");
     Require(sceNpSessionSignalingGetConnectionStatistics(&statistics) == 0, "statistics failed");
     Require(statistics.peakConnectionCount == 0 && statistics.connectionCount == 0 && statistics.connectingCount == 0 && statistics.connectedCount == 0, "statistics contents");
     Require(sceNpSessionSignalingInitialize(nullptr) == AlreadyInitialized, "initialization check precedes initialize arguments");

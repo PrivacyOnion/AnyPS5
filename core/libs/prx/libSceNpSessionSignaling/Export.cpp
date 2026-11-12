@@ -235,7 +235,11 @@ int APS5_VABI sceNpSessionSignalingGetMemoryInfo(SessionSignalingMemoryInfo* mem
     std::lock_guard lock(g_mutex);
     if (!g_initialized) return SCE_NP_SESSION_SIGNALING_ERROR_NOT_INITIALIZED;
     if (!memoryInfo) return SCE_NP_SESSION_SIGNALING_ERROR_INVALID_ARGUMENT;
-    *memoryInfo = {g_poolSize, 0, 0};
+    const SessionSignalingMemoryInfo local{g_poolSize, 0, 0};
+    const int savedErrno = errno;
+    const bool copied = GuestCopyOut_nid_no_patch(memoryInfo, &local, sizeof(local));
+    errno = savedErrno;
+    if (!copied) return SCE_NP_SESSION_SIGNALING_ERROR_INVALID_ARGUMENT;
     return 0;
 }
 
@@ -243,7 +247,11 @@ int APS5_VABI sceNpSessionSignalingGetConnectionStatistics(SessionSignalingConne
     std::lock_guard lock(g_mutex);
     if (!g_initialized) return SCE_NP_SESSION_SIGNALING_ERROR_NOT_INITIALIZED;
     if (!statistics) return SCE_NP_SESSION_SIGNALING_ERROR_INVALID_ARGUMENT;
-    *statistics = {};
+    const SessionSignalingConnectionStatistics local{};
+    const int savedErrno = errno;
+    const bool copied = GuestCopyOut_nid_no_patch(statistics, &local, sizeof(local));
+    errno = savedErrno;
+    if (!copied) return SCE_NP_SESSION_SIGNALING_ERROR_INVALID_ARGUMENT;
     return 0;
 }
 
