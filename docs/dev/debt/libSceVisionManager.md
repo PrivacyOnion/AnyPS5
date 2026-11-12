@@ -8,6 +8,7 @@
 ### Functional
 
 - [sceVisionManagerGetWorkingMemorySize](../../../core/libs/prx/libSceVisionManager/Export.cpp) (libSceVisionManager) - returns `0x80E70000` when output pointers are null or unwritable via `GuestCopyOut_nid_no_patch`, preserving host errno; console behavior on unmapped pointers is not measured.
+- [`sceVisionManagerGetLibraryVersion`](../../../core/libs/prx/libSceVisionManager/Export.cpp) (libSceVisionManager) - an output at an unmapped guest address returns the invalid-argument error; the console's result is not measured.
 
 ### Additional callable exports
 

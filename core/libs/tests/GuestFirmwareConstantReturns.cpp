@@ -179,6 +179,9 @@ void CheckVisionManager() {
     constexpr std::uint64_t RegisterUserDataVersion = 0x1017000014043000;
     std::uint64_t version[3] = {~0ull, ~0ull, ~0ull};
     Require(sceVisionManagerGetLibraryVersion(nullptr) == VisionInvalid);
+    errno = 71;
+    Require(sceVisionManagerGetLibraryVersion(reinterpret_cast<std::uint64_t*>(0x10)) == VisionInvalid);
+    Require(errno == 71);
     Require(sceVisionManagerGetLibraryVersion(&version[1]) == 0);
     Require(version[0] == ~0ull && version[1] == LibraryVersion && version[2] == ~0ull);
 

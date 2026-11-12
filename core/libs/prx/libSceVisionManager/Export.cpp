@@ -70,7 +70,11 @@ int APS5_VABI sceVisionManagerGetHitCountOfRegisterUserData() {
 
 int APS5_VABI sceVisionManagerGetLibraryVersion(std::uint64_t* version) {
     if (version == nullptr) return ErrorInvalidArgument;
-    *version = LibraryVersion;
+    const std::uint64_t local = LibraryVersion;
+    const int savedErrno = errno;
+    const bool copied = GuestCopyOut_nid_no_patch(version, &local, sizeof(local));
+    errno = savedErrno;
+    if (!copied) return ErrorInvalidArgument;
     return 0;
 }
 
